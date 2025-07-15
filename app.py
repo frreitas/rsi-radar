@@ -6,7 +6,7 @@ from ta.trend import EMAIndicator
 import time
 
 st.set_page_config(page_title="Radar Técnico Cripto", layout="wide")
-st.title("📈 Radar Técnico Cripto")
+st.title("📈 Radar Técnico Cripto - RSI + EMA20 + EMA50")
 st.markdown("""
 Aplicativo para análise técnica das principais criptomoedas.
 - Dados de moedas via CoinGecko API
@@ -14,14 +14,12 @@ Aplicativo para análise técnica das principais criptomoedas.
 - Indicadores calculados localmente com `ta`
 """)
 
-# Configurações iniciais
 INTERVALOS_BINANCE = {
     "1h": "1h",
     "4h": "4h",
     "1d": "1d"
 }
 
-# Função para buscar top N moedas do CoinGecko
 @st.cache_data(ttl=600)
 def get_top_coins(n=100):
     url = "https://api.coingecko.com/api/v3/coins/markets"
@@ -41,7 +39,6 @@ def get_top_coins(n=100):
         st.error(f"Erro ao buscar top moedas CoinGecko: {e}")
         return pd.DataFrame()
 
-# Função para pegar candles históricos da Binance
 @st.cache_data(ttl=300)
 def get_binance_klines(symbol: str, interval: str, limit: int = 500):
     url = "https://api.binance.com/api/v3/klines"
@@ -75,12 +72,10 @@ def calcular_indicadores(df):
     ema20 = EMAIndicator(close=close, window=20).ema_indicator()
     ema50 = EMAIndicator(close=close, window=50).ema_indicator()
 
-    # Últimos valores
     rsi_ult = rsi.iloc[-1]
     ema20_ult = ema20.iloc[-1]
     ema50_ult = ema50.iloc[-1]
 
-    # Classificação RSI
     if rsi_ult <= 30:
         rsi_class = "Sobrevendida"
     elif rsi_ult >= 70:
@@ -88,7 +83,6 @@ def calcular_indicadores(df):
     else:
         rsi_class = "Neutra"
 
-    # Tendência
     if ema20_ult > ema50_ult:
         tendencia = "Alta"
     elif ema20_ult < ema50_ult:
@@ -104,7 +98,7 @@ def calcular_indicadores(df):
         "Tendência": tendencia
     }
 
-# UI Inputs
+# Inputs UI
 top_n = st.slider("Número de moedas a analisar (top N do mercado)", 5, 100, 20)
 intervalo = st.selectbox("Intervalo de tempo", list(INTERVALOS_BINANCE.keys()), index=0)
 filtro_rsi = st.multiselect("Filtrar por classificação RSI", ["Sobrevendida", "Neutra", "Sobrecomprada"], default=["Sobrevendida", "Neutra", "Sobrecomprada"])
@@ -114,17 +108,14 @@ botao_analise = st.button("Iniciar análise")
 
 if botao_analise:
     with st.spinner("Buscando dados e calculando indicadores..."):
-        # Busca top moedas
         df_moedas = get_top_coins(top_n)
         if df_moedas.empty:
             st.warning("Nenhuma moeda encontrada no CoinGecko.")
             st.stop()
 
-        # Lista de símbolos Binance (Ex: BTCUSDT)
         if input_moeda.strip():
             symbols = [input_moeda.strip().upper()]
         else:
-            # Usar apenas moedas que Binance suporta (para simplificar, pega símbolo + USDT)
             symbols = []
             for _, row in df_moedas.iterrows():
                 symbol_binance = row["symbol"].upper() + "USDT"
@@ -132,7 +123,6 @@ if botao_analise:
 
         resultados = []
         for symbol in symbols:
-            # Obter candles
             df_candles = get_binance_klines(symbol, INTERVALOS_BINANCE[intervalo])
             if df_candles.empty:
                 st.warning(f"Sem dados de candles para {symbol}")
@@ -151,27 +141,15 @@ if botao_analise:
             }
             resultados.append(resultado)
 
-            time.sleep(0.15)  # Pequena pausa para respeitar limite API
+            time.sleep(0.15)  # Evita limite API
 
         if resultados:
             df_result = pd.DataFrame(resultados)
-            # Filtrar RSI
             df_filtrado = df_result[df_result["Classificação RSI"].isin(filtro_rsi)]
 
-            # Alertas visuais
             def alerta_row(row):
                 if row["RSI"] <= 30 and row["Tendência"] == "Alta":
                     return "🔔"
                 return ""
 
-            df_filtrado["Alerta"] = df_filtrado.apply(alerta_row, axis=1)
-
-            st.subheader("📋 Resultados da análise técnica")
-            st.dataframe(df_filtrado.style.applymap(lambda v: "background-color: lightgreen" if v == "🔔" else "", subset=["Alerta"]), use_container_width=True)
-
-            if df_filtrado["Alerta"].str.contains("🔔").any():
-                st.success("Moedas com RSI ≤ 30 e Tendência de Alta destacadas!")
-            else:
-                st.info("Nenhuma moeda com alerta no momento.")
-        else:
-            st.warning("Nenhum resultado obtido. Tente outro filtro ou símbolo.")
+            df_filtrado["Alerta"] = df_f
