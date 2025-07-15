@@ -7,168 +7,86 @@ from ta.trend import EMAIndicator
 
 st.set_page_config(page_title="Radar RSI Cripto", layout="wide")
 st.title("📊 Radar RSI com Tendência de Alta")
-st.markdown("Analisa as principais criptos com RSI e EMAs em tempo real via Binance API.")
+st.markdown("Análise das principais criptos com fallback da Binance para CoinGecko.")
 
-# ===== INTERVALOS E PARÂMETROS =====
-intervalo = st.selectbox("⏱️ Intervalo de tempo", ["1h", "4h", "1d"], index=0)
-binance_interval = {"1h": "1h", "4h": "4h", "1d": "1d"}[intervalo]
+# ===== Configurações =====
+intervalo = st.selectbox("⏱️ Intervalo", ["1h", "4h", "1d"], index=0)
 limite_velas = 100
-limite_moedas = st.selectbox("🏆 Quantidade de moedas a analisar", [20, 50, 100], index=2)
+limite_moedas = st.selectbox("🏆 Top moedas", [20, 50, 100], index=2)
+atualizar = st.button("🔄 Atualizar agora")
 
-executar_analise = st.button("🔄 Atualizar agora")
-
-# ===== FUNÇÕES AUXILIARES =====
+# ===== APIs =====
 @st.cache_data(ttl=600)
-def get_binance_symbols():
-    """Retorna lista de símbolos disponíveis na Binance"""
-    url = "https://api.binance.com/api/v3/exchangeInfo"
-    try:
-        res = requests.get(url, timeout=10)
-        res.raise_for_status()
-        data = res.json()
-        return set([s["symbol"] for s in data["symbols"]])
-    except Exception as e:
-        st.error(f"Erro ao obter símbolos da Binance: {e}")
-        return set()
-
-@st.cache_data(ttl=300)
-def get_top_symbols_existentes_na_binance(limit=100):
-    """Retorna os top N símbolos do CoinGecko que também existem na Binance como pares USDT"""
+def get_top_coins(limit=limite_moedas):
     url = "https://api.coingecko.com/api/v3/coins/markets"
-    params = {
-        "vs_currency": "usd",
-        "order": "market_cap_desc",
-        "per_page": limit,
-        "page": 1
-    }
+    params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": limit, "page":1}
+    return requests.get(url, params=params, timeout=10).json()
+
+def get_binance_klines(symbol):
     try:
-        res = requests.get(url, params=params, timeout=10)
-        res.raise_for_status()
-        coins = res.json()
-        binance_symbols = get_binance_symbols()
-        valid_symbols = []
-
-        for coin in coins:
-            symbol = coin["symbol"].upper()
-            pair = symbol + "USDT"
-            if pair in binance_symbols:
-                valid_symbols.append(pair)
-
-        return valid_symbols
-    except Exception as e:
-        st.error(f"Erro ao buscar moedas: {e}")
-        return []
-
-def get_klines(symbol, interval="1h", limit=100):
-    try:
-        url = f"https://api.binance.com/api/v3/klines"
-        params = {"symbol": symbol, "interval": interval, "limit": limit}
-        r = requests.get(url, params=params, timeout=10)
-
-        if r.status_code != 200:
-            return None
-
-        data = r.json()
-        if not data or len(data) < 50:
-            return None
-
-        df = pd.DataFrame(data, columns=[
-            "timestamp", "open", "high", "low", "close", "volume",
-            "close_time", "quote_asset_volume", "number_of_trades",
-            "taker_buy_base", "taker_buy_quote", "ignore"
-        ])
-        df["close"] = df["close"].astype(float)
+        res = requests.get("https://api.binance.com/api/v3/klines",
+                           params={"symbol":symbol,"interval":intervalo,"limit":limite_velas}, timeout=10)
+        data = res.json()
+        df = pd.DataFrame(data, columns=["timestamp","open","high","low","close","volume","close_time",
+                                         "quote_asset_volume","number_of_trades","taker_buy_base","taker_buy_quote","ignore"])
+        df["close"]=df["close"].astype(float)
         return df
-
-    except Exception as e:
-        print(f"Erro em get_klines para {symbol}: {e}")
+    except:
         return None
 
-def classificar_rsi(rsi):
-    if rsi <= 30:
-        return "Sobrevendida"
-    elif rsi >= 70:
-        return "Sobrecomprada"
-    else:
-        return "Neutra"
-
-def classificar_tendencia(ema20, ema50):
-    if ema20 > ema50:
-        return "Alta"
-    elif ema20 < ema50:
-        return "Baixa"
-    else:
-        return "Neutra"
-
-def analisar_moeda(symbol):
+def get_coingecko_ohlc(cg_id):
+    days_map={"1h":1,"4h":7,"1d":14}
     try:
-        df = get_klines(symbol, interval=binance_interval, limit=limite_velas)
-        if df is None or df.empty or len(df) < 50:
-            return None
-
-        rsi = RSIIndicator(close=df["close"]).rsi().iloc[-1]
-        ema20 = EMAIndicator(close=df["close"], window=20).ema_indicator().iloc[-1]
-        ema50 = EMAIndicator(close=df["close"], window=50).ema_indicator().iloc[-1]
-        preco = df["close"].iloc[-1]
-
-        return {
-            "Moeda": symbol.replace("USDT", ""),
-            "Preço (USDT)": round(preco, 4),
-            "RSI": round(rsi, 2),
-            "Classificação RSI": classificar_rsi(rsi),
-            "Tendência": classificar_tendencia(ema20, ema50),
-            "Alerta": "🔔" if rsi <= 30 and ema20 > ema50 else ""
-        }
-
-    except Exception as e:
-        print(f"Erro ao analisar {symbol}: {e}")
+        res = requests.get(f"https://api.coingecko.com/api/v3/coins/{cg_id}/ohlc",
+                           params={"vs_currency":"usd","days":days_map[intervalo]}, timeout=10)
+        df = pd.DataFrame(res.json(), columns=["timestamp","open","high","low","close"])
+        df["close"]=df["close"].astype(float)
+        return df
+    except:
         return None
 
-# ===== EXECUÇÃO =====
-if executar_analise:
-    with st.spinner("🔍 Analisando mercado..."):
-        symbols = get_top_symbols_existentes_na_binance(limit=limite_moedas)
+def analisar(symbol, cg_id, current_price, price_change):
+    df = get_binance_klines(symbol) or get_coingecko_ohlc(cg_id)
+    if df is None or len(df)<50: return None
+    rsi = RSIIndicator(df["close"]).rsi().iloc[-1]
+    ema20 = EMAIndicator(df["close"],window=20).ema_indicator().iloc[-1]
+    ema50 = EMAIndicator(df["close"],window=50).ema_indicator().iloc[-1]
+    trend = "Alta" if ema20>ema50 else "Baixa" if ema20<ema50 else "Neutra"
+    alert = "🔔" if rsi<=30 and trend=="Alta" else ""
+    return {"Moeda":cg_id.upper(), "Preço US$":round(current_price,4),
+            "Variação (%)":round(price_change,2),
+            "RSI":round(rsi,2), "Tendência":trend, "Alerta":alert}
 
-        resultados = []
-        status_list = []
+# ===== Execução =====
+if atualizar:
+    coins = get_top_coins()
+    symbols = [(c["symbol"].upper()+"USDT",c["id"],c["current_price"],c["price_change_percentage_24h"]) for c in coins]
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_symbol = {executor.submit(analisar_moeda, sym): sym for sym in symbols}
-            for future in future_to_symbol:
-                symbol = future_to_symbol[future]
-                try:
-                    result = future.result()
-                    if result:
-                        resultados.append(result)
-                        status_list.append({"Moeda": symbol.replace("USDT", ""), "Status": "✅ Sucesso"})
-                    else:
-                        status_list.append({"Moeda": symbol.replace("USDT", ""), "Status": "❌ Erro na análise"})
-                except Exception as e:
-                    status_list.append({"Moeda": symbol.replace("USDT", ""), "Status": f"❌ Exceção: {str(e)}"})
+    results,status=[]
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {ex.submit(analisar,*s):s for s in symbols}
+        for f in futures:
+            sym,id_,price,change=futures[f]
+            res=f.result()
+            status.append({"Moeda":id_.upper(),"Status":"✅OK" if res else "❌Erro"})
+            if res: results.append(res)
 
-    if status_list:
-        status_df = pd.DataFrame(status_list)
-        st.subheader("📦 Status da Análise das Moedas")
-        st.dataframe(status_df, use_container_width=True)
+    st.subheader("📦 Status da Análise")
+    st.dataframe(pd.DataFrame(status),use_container_width=True)
 
-    if resultados:
-        df = pd.DataFrame(resultados)
-
-        filtro_rsi = st.multiselect(
-            "📌 Filtrar por classificação RSI",
-            options=["Sobrevendida", "Neutra", "Sobrecomprada"],
-            default=["Sobrevendida", "Neutra", "Sobrecomprada"]
-        )
-        df_filtrado = df[df["Classificação RSI"].isin(filtro_rsi)]
-
-        st.subheader("📋 Resultado Geral")
-        st.dataframe(df_filtrado, use_container_width=True)
-
-        alertas = df_filtrado[df_filtrado["Alerta"] != ""]
-        if not alertas.empty:
-            st.subheader("🚨 Alertas Encontrados")
-            st.dataframe(alertas, use_container_width=True)
+    if results:
+        df = pd.DataFrame(results)
+        filt = st.multiselect("Filtrar RSI",["Sobrevendida","Neutra","Sobrecomprada"],default=["Sobrevendida","Neutra","Sobrecomprada"])
+        df = df[(df["RSI"]<=30)&(filt and "Sobrevendida" in filt) |
+                (df["RSI"]>=70)&(filt and "Sobrecomprada" in filt) |
+                ((df["RSI"]>30)&(df["RSI"]<70)&(filt and "Neutra" in filt))]
+        st.subheader("📋 Resultados")
+        st.dataframe(df,use_container_width=True)
+        alert=df[df["Alerta"]!=""]
+        if not alert.empty:
+            st.subheader("🚨 Alertas")
+            st.dataframe(alert,use_container_width=True)
         else:
-            st.success("Nenhuma moeda com RSI ≤ 30 e tendência de alta no momento.")
+            st.success("Nenhuma moeda com RSI ≤30 e tendência de alta.")
     else:
-        st.warning("⚠️ Nenhuma moeda retornou dados de análise.")
+        st.warning("⚠️ Nenhuma análise disponível.")
