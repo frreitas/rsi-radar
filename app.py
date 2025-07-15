@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import requests
@@ -10,7 +9,6 @@ st.set_page_config(page_title="Radar RSI Cripto", layout="wide")
 st.title("📊 Radar RSI com Tendência de Alta")
 st.markdown("Filtra moedas com **RSI ≤ 30** e **tendência de alta** (EMA20 > EMA50) usando dados da Binance.")
 
-# Lista de símbolos que deseja acompanhar
 symbols = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "DOGEUSDT", "XRPUSDT",
     "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT", "TRXUSDT", "MATICUSDT"
@@ -30,6 +28,9 @@ def get_klines(symbol, interval="1h", limit=100):
 def analyze(symbol):
     try:
         df = get_klines(symbol)
+        if df.empty or len(df) < 50:
+            return None
+
         rsi = RSIIndicator(close=df["close"]).rsi()
         ema20 = EMAIndicator(close=df["close"], window=20).ema_indicator()
         ema50 = EMAIndicator(close=df["close"], window=50).ema_indicator()
@@ -39,17 +40,19 @@ def analyze(symbol):
             "Moeda": symbol,
             "Preço": round(last["close"], 4),
             "RSI": round(rsi.iloc[-1], 2),
-            "EMA20 > EMA50": ema20.iloc[-1] > ema50.iloc[-1],
+            "Tendência de Alta": ema20.iloc[-1] > ema50.iloc[-1]
         }
-    except:
+    except Exception as e:
         return None
 
-# Coletar e filtrar
+# Analisar moedas
 dados = [analyze(sym) for sym in symbols]
-df = pd.DataFrame([d for d in dados if d])
+df = pd.DataFrame([d for d in dados if d is not None])
 
-# Filtrar
-resultado = df[(df["RSI"] <= 30) & (df["EMA20 > EMA50"])]
-
-st.success(f"Moedas encontradas: {len(resultado)}")
-st.dataframe(resultado, use_container_width=True)
+# Mostrar resultados
+if not df.empty:
+    resultado = df[(df["RSI"] <= 30) & (df["Tendência de Alta"] == True)]
+    st.success(f"Moedas encontradas: {len(resultado)}")
+    st.dataframe(resultado, use_container_width=True)
+else:
+    st.warning("Nenhum dado válido retornado pela API.")
