@@ -1,133 +1,66 @@
 import streamlit as st
-import requests
 import pandas as pd
+import requests
+import ta  # Para cálculos de indicadores
 
-st.set_page_config(page_title="Análise Técnica Manual", layout="wide")
-st.title("📊 Análise Técnica Manual - Criptomoedas")
+# Função para obter dados da API
+def get_candles(coin, timeframe):
+    # Exemplo usando Yahoo Finance
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{coin}-USD?range=1mo&interval={timeframe}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        return data['chart']['result'][0]['indicators']['quote'][0]
+    else:
+        st.error("Não foi possível carregar dados automaticamente. Insira os valores manualmente.")
+        return None
 
-# Inicializar histórico
-if "historico" not in st.session_state:
-    st.session_state["historico"] = []
+# Função para calcular RSI e EMAs
+def calculate_indicators(data):
+    df = pd.DataFrame(data)
+    df['EMA_8'] = ta.trend.ema_indicator(df['close'], window=8)
+    df['EMA_21'] = ta.trend.ema_indicator(df['close'], window=21)
+    df['EMA_56'] = ta.trend.ema_indicator(df['close'], window=56)
+    df['EMA_200'] = ta.trend.ema_indicator(df['close'], window=200)
+    df['RSI'] = ta.momentum.rsi(df['close'], window=14)
+    return df
 
-# Lista de moedas pré-definidas
-moedas_disponiveis = {
-    "Bitcoin (BTC)": "bitcoin",
-    "Ethereum (ETH)": "ethereum",
-    "Solana (SOL)": "solana",
-    "XRP (XRP)": "ripple",
-    "Cardano (ADA)": "cardano",
-}
+# Interface do Streamlit
+st.title("Análise Técnica de Criptomoedas")
 
-# Cache com TTL para evitar rate limit da CoinGecko
-@st.cache_data(ttl=600)
-def get_precos_coin_gecko():
-    ids = ",".join(moedas_disponiveis.values())
-    url = f"https://api.coingecko.com/api/v3/simple/price"
-    params = {"ids": ids, "vs_currencies": "usd"}
-    try:
-        res = requests.get(url, params=params, timeout=10)
-        res.raise_for_status()
-        return res.json()
-    except Exception as e:
-        st.warning(f"Erro ao obter preços da CoinGecko: {e}")
-        return {}
+# Seleção de moeda e timeframe
+coin = st.selectbox("Selecione a moeda:", ["BTC", "ETH", "SOL"])
+timeframe = st.selectbox("Selecione o timeframe:", ["1h", "4h", "1d", "1w"])
 
-# Botão de reset
-if st.button("🧹 Limpar / Resetar tudo"):
-    st.session_state["historico"] = []
+# Obter dados
+data = get_candles(coin, timeframe)
+
+if data:
+    indicators_df = calculate_indicators(data)
+    st.write(indicators_df)
+
+    # Classificação do RSI
+    rsi_value = indicators_df['RSI'].iloc[-1]
+    if rsi_value < 30:
+        rsi_classification = "Sobrevendida"
+    elif rsi_value > 70:
+        rsi_classification = "Sobrecomprada"
+    else:
+        rsi_classification = "Neutra"
+
+    st.write(f"Classificação do RSI: {rsi_classification}")
+
+    # Exibir EMAs
+    st.write(f"EMA 8: {indicators_df['EMA_8'].iloc[-1]}")
+    st.write(f"EMA 21: {indicators_df['EMA_21'].iloc[-1]}")
+    st.write(f"EMA 56: {indicators_df['EMA_56'].iloc[-1]}")
+    st.write(f"EMA 200: {indicators_df['EMA_200'].iloc[-1]}")
+
+    # Exportar para CSV
+    if st.button("Exportar Análise"):
+        indicators_df.to_csv(f"{coin}_analysis.csv")
+        st.success("Análise exportada com sucesso!")
+
+# Botão para limpar/resetar
+if st.button("Limpar"):
     st.experimental_rerun()
-
-# ===== Seleção de moeda =====
-st.subheader("🪙 Selecione a moeda para análise")
-
-col1, col2 = st.columns([1, 1])
-with col1:
-    moeda_nome = st.selectbox("Escolha uma moeda", list(moedas_disponiveis.keys()))
-with col2:
-    timeframe_rsi = st.selectbox("⏱️ Timeframe do RSI", ["1h", "4h", "1d", "1w", "1M"])
-
-moeda_id = moedas_disponiveis[moeda_nome]
-precos = get_precos_coin_gecko()
-preco = precos.get(moeda_id, {}).get("usd")
-
-if preco:
-    st.markdown(f"💰 **Preço atual de {moeda_nome}:** ${preco:,.2f}")
-else:
-    preco = st.number_input(f"Preço atual de {moeda_nome} (inserir manualmente)", min_value=0.0, step=0.01)
-
-# ===== RSI manual =====
-st.subheader("📈 RSI atual")
-rsi = st.number_input("Valor do RSI", min_value=0.0, max_value=100.0, step=0.1)
-
-# Classificação RSI
-if rsi <= 30:
-    rsi_class = "Sobrevendida"
-elif rsi >= 70:
-    rsi_class = "Sobrecomprada"
-else:
-    rsi_class = "Neutra"
-
-# ===== EMAs Semanais =====
-st.subheader("📐 EMAs SEMANAIS (usadas sempre no gráfico semanal)")
-
-col1, col2, col3, col4 = st.columns(4)
-ema8 = col1.number_input("EMA 8", min_value=0.0, step=0.1)
-ema21 = col2.number_input("EMA 21", min_value=0.0, step=0.1)
-ema56 = col3.number_input("EMA 56", min_value=0.0, step=0.1)
-ema200 = col4.number_input("EMA 200", min_value=0.0, step=0.1)
-
-# Análise da estrutura semanal (EMAs)
-if ema8 > ema21 > ema56 > ema200:
-    estrutura = "Alta consolidada"
-elif ema8 < ema21 < ema56 < ema200:
-    estrutura = "Baixa consolidada"
-else:
-    estrutura = "Estrutura neutra / transição"
-
-# Recomendação com base em RSI e estrutura
-if rsi <= 30 and estrutura == "Alta consolidada":
-    recomendacao = "🟢 Bom sinal de entrada"
-elif estrutura == "Alta consolidada" and rsi_class == "Neutra":
-    recomendacao = "🟡 Tendência forte, mas RSI neutro"
-elif estrutura == "Baixa consolidada":
-    recomendacao = "🔴 Tendência de baixa - Cautela"
-else:
-    recomendacao = "⚪ Sem sinal claro no momento"
-
-# Monta resultado da análise
-resultado = {
-    "Moeda": moeda_nome,
-    "Timeframe RSI": timeframe_rsi,
-    "Preço Atual (USD)": round(preco, 2),
-    "RSI": rsi,
-    "Classificação RSI": rsi_class,
-    "EMA 8w": ema8,
-    "EMA 21w": ema21,
-    "EMA 56w": ema56,
-    "EMA 200w": ema200,
-    "Estrutura Semanal": estrutura,
-    "Recomendação": recomendacao
-}
-
-# Botão para adicionar ao histórico
-if st.button("📌 Adicionar Análise ao Histórico"):
-    st.session_state["historico"].append(resultado)
-    st.success("Análise adicionada ao histórico!")
-
-# Resultado atual
-st.subheader("📋 Resultado da Análise Atual")
-df_result = pd.DataFrame([resultado])
-st.dataframe(df_result, use_container_width=True, hide_index=True)
-
-# Download do CSV atual
-csv_atual = df_result.to_csv(index=False).encode("utf-8")
-st.download_button("📥 Baixar Resultado como CSV", data=csv_atual, file_name="analise_atual.csv", mime="text/csv")
-
-# Histórico completo
-if st.session_state["historico"]:
-    st.subheader("📚 Histórico de Análises")
-    df_hist = pd.DataFrame(st.session_state["historico"])
-    st.dataframe(df_hist, use_container_width=True, hide_index=True)
-
-    csv_hist = df_hist.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Baixar Histórico como CSV", data=csv_hist, file_name="historico_analises.csv", mime="text/csv")
