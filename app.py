@@ -39,6 +39,18 @@ def get_top_coins(n=100):
         st.error(f"Erro ao buscar top moedas CoinGecko: {e}")
         return pd.DataFrame()
 
+@st.cache_data(ttl=600)
+def get_binance_symbols():
+    url = "https://api.binance.com/api/v3/exchangeInfo"
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        return [s["symbol"] for s in data["symbols"]]
+    except Exception as e:
+        st.error(f"Erro ao obter símbolos da Binance: {e}")
+        return []
+
 @st.cache_data(ttl=300)
 def get_binance_klines(symbol: str, interval: str, limit: int = 500):
     url = "https://api.binance.com/api/v3/klines"
@@ -113,6 +125,11 @@ if botao_analise:
             st.warning("Nenhuma moeda encontrada no CoinGecko.")
             st.stop()
 
+        symbols_binance = get_binance_symbols()
+        if not symbols_binance:
+            st.warning("Não foi possível obter lista de símbolos da Binance.")
+            st.stop()
+
         if input_moeda.strip():
             symbols = [input_moeda.strip().upper()]
         else:
@@ -123,6 +140,10 @@ if botao_analise:
 
         resultados = []
         for symbol in symbols:
+            if symbol not in symbols_binance:
+                st.warning(f"Símbolo {symbol} não listado na Binance. Ignorando.")
+                continue
+
             df_candles = get_binance_klines(symbol, INTERVALOS_BINANCE[intervalo])
             if df_candles.empty:
                 st.warning(f"Sem dados de candles para {symbol}")
@@ -152,4 +173,14 @@ if botao_analise:
                     return "🔔"
                 return ""
 
-            df_filtrado["Alerta"] = df_f
+            df_filtrado["Alerta"] = df_filtrado.apply(alerta_row, axis=1)
+
+            st.subheader("📋 Resultados da análise técnica")
+            st.dataframe(df_filtrado.style.applymap(lambda v: "background-color: lightgreen" if v == "🔔" else "", subset=["Alerta"]), use_container_width=True)
+
+            if df_filtrado["Alerta"].str.contains("🔔").any():
+                st.success("Moedas com RSI ≤ 30 e Tendência de Alta destacadas!")
+            else:
+                st.info("Nenhuma moeda com alerta no momento.")
+        else:
+            st.warning("Nenhum resultado obtido. Tente outro filtro ou símbolo.")
