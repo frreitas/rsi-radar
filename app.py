@@ -7,15 +7,15 @@ from ta.trend import EMAIndicator
 
 st.set_page_config(page_title="Radar RSI Cripto", layout="wide")
 st.title("📊 Radar RSI com Tendência de Alta")
-st.markdown("Análise das principais criptos com fallback da Binance para CoinGecko.")
+st.markdown("Análise das principais criptos com RSI, EMAs e CoinGecko como fonte de dados.")
 
-# ===== Configurações =====
+# ===== CONFIGURAÇÕES =====
 intervalo = st.selectbox("⏱️ Intervalo", ["1h", "4h", "1d"], index=0)
 limite_velas = 100
 limite_moedas = st.selectbox("🏆 Top moedas", [20, 50, 100], index=2)
 atualizar = st.button("🔄 Atualizar agora")
 
-# ===== APIs =====
+# ===== API: COINGECKO (TOP COINS) =====
 @st.cache_data(ttl=600)
 def get_top_coins(limit=100):
     url = "https://api.coingecko.com/api/v3/coins/markets"
@@ -28,34 +28,23 @@ def get_top_coins(limit=100):
         st.error(f"Erro ao obter moedas do CoinGecko: {e}")
         return []
 
-def get_binance_klines(symbol):
+# ===== API: COINGECKO (MARKET CHART) =====
+def get_coingecko_market_chart(cg_id, days):
     try:
-        res = requests.get("https://api.binance.com/api/v3/klines",
-                           params={"symbol":symbol,"interval":intervalo,"limit":limite_velas}, timeout=10)
-        if res.status_code != 200:
+        url = f"https://api.coingecko.com/api/v3/coins/{cg_id}/market_chart"
+        res = requests.get(url, params={"vs_currency":"usd", "days":days}, timeout=10)
+        res.raise_for_status()
+        prices = res.json()["prices"]
+        if not prices or len(prices) < 50:
             return None
-        data = res.json()
-        df = pd.DataFrame(data, columns=["timestamp","open","high","low","close","volume","close_time",
-                                         "quote_asset_volume","number_of_trades","taker_buy_base","taker_buy_quote","ignore"])
-        df["close"]=df["close"].astype(float)
+        df = pd.DataFrame(prices, columns=["timestamp", "close"])
+        df["close"] = df["close"].astype(float)
         return df
-    except:
+    except Exception as e:
+        st.error(f"Erro no CoinGecko (market_chart) para {cg_id}: {e}")
         return None
 
-def get_coingecko_ohlc(cg_id):
-    days_map={"1h":1,"4h":7,"1d":14}
-    try:
-        url = f"https://api.coingecko.com/api/v3/coins/{cg_id}/ohlc"
-        params = {"vs_currency":"usd", "days": days_map[intervalo]}
-        res = requests.get(url, params=params, timeout=10)
-        if res.status_code != 200:
-            return None
-        df = pd.DataFrame(res.json(), columns=["timestamp","open","high","low","close"])
-        df["close"]=df["close"].astype(float)
-        return df
-    except:
-        return None
-
+# ===== CLASSIFICAÇÕES =====
 def classificar_rsi(rsi):
     if rsi <= 30:
         return "Sobrevendida"
@@ -72,14 +61,14 @@ def classificar_tendencia(ema20, ema50):
     else:
         return "Neutra"
 
-def analisar(symbol, cg_id, current_price, price_change):
-    try:
-        df = get_binance_klines(symbol)
-        if df is None:
-            df = get_coingecko_ohlc(cg_id)
-        if df is None or len(df) < 50:
-            return None
+# ===== ANÁLISE INDIVIDUAL =====
+def analisar(cg_id, preco_atual, variacao_dia):
+    dias_equivalentes = {"1h":1, "4h":7, "1d":14}
+    df = get_coingecko_market_chart(cg_id, dias_equivalentes[intervalo])
+    if df is None or len(df) < 50:
+        return None
 
+    try:
         rsi = RSIIndicator(df["close"]).rsi().iloc[-1]
         ema20 = EMAIndicator(df["close"], window=20).ema_indicator().iloc[-1]
         ema50 = EMAIndicator(df["close"], window=50).ema_indicator().iloc[-1]
@@ -89,50 +78,50 @@ def analisar(symbol, cg_id, current_price, price_change):
 
         return {
             "Moeda": cg_id.upper(),
-            "Preço US$": round(current_price, 4),
-            "Variação (%)": round(price_change or 0, 2),
+            "Preço US$": round(preco_atual, 4),
+            "Variação (%)": round(variacao_dia or 0, 2),
             "RSI": round(rsi, 2),
             "Classificação RSI": classificar_rsi(rsi),
             "Tendência": tendencia,
             "Alerta": alerta
         }
     except Exception as e:
-        print(f"Erro ao analisar {cg_id.upper()}: {e}")
+        st.error(f"Erro ao analisar {cg_id.upper()}: {e}")
         return None
 
-# ===== Execução =====
+# ===== EXECUÇÃO PRINCIPAL =====
 if atualizar:
     with st.spinner("🔍 Analisando criptomoedas..."):
         coins = get_top_coins(limit=limite_moedas)
-        symbols = [
-            (coin["symbol"].upper() + "USDT", coin["id"], coin["current_price"], coin.get("price_change_percentage_24h", 0))
+        tarefas = [
+            (coin["id"], coin["current_price"], coin.get("price_change_percentage_24h", 0))
             for coin in coins
         ]
 
-        results = []
+        resultados = []
         status = []
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_symbol = {
-                executor.submit(analisar, *args): args[1] for args in symbols
-            }
-            for future in future_to_symbol:
-                cg_id = future_to_symbol[future]
+            future_to_id = {executor.submit(analisar, *args): args[0] for args in tarefas}
+            for future in future_to_id:
+                cg_id = future_to_id[future]
                 try:
                     res = future.result()
                     if res:
-                        results.append(res)
+                        resultados.append(res)
                         status.append({"Moeda": cg_id.upper(), "Status": "✅ Sucesso"})
                     else:
                         status.append({"Moeda": cg_id.upper(), "Status": "❌ Erro na análise"})
                 except Exception as e:
                     status.append({"Moeda": cg_id.upper(), "Status": f"❌ Exceção: {e}"})
 
+    # ===== TABELA DE STATUS =====
     st.subheader("📦 Status da Análise")
     st.dataframe(pd.DataFrame(status), use_container_width=True)
 
-    if results:
-        df = pd.DataFrame(results)
+    # ===== RESULTADOS =====
+    if resultados:
+        df = pd.DataFrame(resultados)
 
         filtro_rsi = st.multiselect(
             "📌 Filtrar por classificação RSI",
