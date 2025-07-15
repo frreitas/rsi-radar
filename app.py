@@ -3,9 +3,10 @@ import requests
 import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
+from datetime import datetime
 
-st.set_page_config(page_title="Análise Técnica Cripto Avançada", layout="wide")
-st.title("📊 Análise RSI + EMAs Semanais + Volume")
+st.set_page_config(page_title="Radar Cripto Avançado", layout="wide")
+st.title("📊 Radar RSI + EMAs + Volume")
 
 if "historico" not in st.session_state:
     st.session_state["historico"] = []
@@ -36,25 +37,31 @@ moedas = get_top_cryptos()
 if not moedas:
     st.stop()
 
-col1, col2 = st.columns(2)
-symbol_name = col1.selectbox("🪙 Moeda", list(moedas.keys()))
-timeframe = col2.selectbox("⏱️ Timeframe RSI", ["1h", "4h", "1d", "1w"])
+col1, col2 = st.columns([2, 1])
+symbol_name = col1.selectbox("💰 Escolha a Moeda", list(moedas.keys()))
+timeframe = col2.selectbox("🕒 Timeframe RSI", ["1h", "4h", "1d", "1w"])
 symbol = moedas[symbol_name]
 
-mapa_trade = {"1h": "Day Trade", "4h": "Swing Trade", "1d": "Position Trade", "1w": "Longo Prazo"}
+mapa_trade = {"1h": "Day Trade", "4h": "Swing Trade", "1d": "Position", "1w": "Longo Prazo"}
 tipo_trade = mapa_trade[timeframe]
-st.info(f"🧭 Tipo de operação: **{tipo_trade}**")
+st.markdown(f"### 🎯 Tipo de Operação: **{tipo_trade}**")
 
-# Preço atual
+# Preço atual, variação e volume
 try:
     df_price = get_hist(symbol, "histoday", aggregate=1)
     price = df_price["close"].iloc[-1]
     var = price - df_price["open"].iloc[-1]
     var_pct = (var / df_price["open"].iloc[-1]) * 100
+    volume = df_price["vol"].iloc[-1]
 except:
-    price = var = var_pct = 0
+    price = var = var_pct = volume = 0
 
-# RSI conforme timeframe
+colv1, colv2, colv3 = st.columns(3)
+colv1.metric("💵 Preço Atual (USD)", f"${price:,.2f}")
+colv2.metric("📉 Variação (24h)", f"${var:,.2f}", delta=f"{var_pct:.2f}%")
+colv3.metric("📊 Volume (24h)", f"${volume:,.0f}")
+
+# RSI
 try:
     if timeframe in ("1h", "4h"):
         aggregate = 1 if timeframe == "1h" else 4
@@ -66,10 +73,10 @@ try:
 except:
     rsi_val = st.number_input("RSI (manual)", 0.0, 100.0)
 
-# EMAs SEMANAIS
+# EMAs semanais
 try:
     df_week = get_hist(symbol, "histoday", aggregate=7)
-    ema8  = round(EMAIndicator(df_week["close"], 8 ).ema_indicator().iloc[-1], 2)
+    ema8 = round(EMAIndicator(df_week["close"], 8 ).ema_indicator().iloc[-1], 2)
     ema21 = round(EMAIndicator(df_week["close"], 21).ema_indicator().iloc[-1], 2)
     ema56 = round(EMAIndicator(df_week["close"], 56).ema_indicator().iloc[-1], 2)
     ema200= round(EMAIndicator(df_week["close"], 200).ema_indicator().iloc[-1], 2)
@@ -78,61 +85,67 @@ except:
 
 # Volume
 try:
-    volume = df_rsi["vol"].iloc[-1]
-    volume_antes = df_rsi["vol"].iloc[-2]
-    tendencia_volume = "Subindo" if volume > volume_antes else "Caindo"
+    vol_hoje = df_rsi["vol"].iloc[-1]
+    vol_ontem = df_rsi["vol"].iloc[-2]
+    tendencia_volume = "🔼 Subindo" if vol_hoje > vol_ontem else "🔽 Caindo"
 except:
-    volume = volume_antes = 0
-    tendencia_volume = "Indefinido"
+    tendencia_volume = "❔ Indefinido"
 
 # Classificação RSI
-rsi_class = "Sobrevendida" if rsi_val <= 30 else "Sobrecomprada" if rsi_val >= 70 else "Neutra"
+rsi_class = "🟢 Sobrevendida" if rsi_val <= 30 else "🔴 Sobrecomprada" if rsi_val >= 70 else "⚪ Neutra"
 
 # Estrutura EMAs semanais
 if ema8 > ema21 > ema56 > ema200:
-    estrutura = "Alta consolidada"
+    estrutura = "📈 Alta consolidada"
 elif ema8 < ema21 < ema56 < ema200:
-    estrutura = "Baixa consolidada"
+    estrutura = "📉 Baixa consolidada"
 else:
-    estrutura = "Neutra / transição"
+    estrutura = "⚪ Neutra / transição"
 
-# Confluência para sinal
-if rsi_val <= 30 and estrutura == "Alta consolidada" and tendencia_volume == "Subindo":
+# Confluência
+if rsi_val <= 30 and estrutura == "📈 Alta consolidada" and "Subindo" in tendencia_volume:
     rec = "🟢 Forte sinal de entrada (RSI sobrevendido + volume subindo + tendência de alta)"
-elif estrutura == "Alta consolidada" and rsi_class == "Neutra":
+elif estrutura == "📈 Alta consolidada" and rsi_class == "⚪ Neutra":
     rec = "🟡 Tendência de alta, RSI neutro"
-elif estrutura == "Baixa consolidada":
+elif estrutura == "📉 Baixa consolidada":
     rec = "🔴 Tendência de baixa consolidada, evitar entrada"
 else:
     rec = "⚪ Sem confluência clara"
 
-# Resultado e exibição
-st.subheader("💵 Preço & Variação")
-colp1, colp2 = st.columns(2)
-colp1.metric("Preço Atual", f"${price:,.2f}")
-colp2.metric("Variação (24h)", f"${var:,.2f}", delta=f"{var_pct:.2f}%")
+st.markdown(f"""
+### 📋 Resultado da Análise
+- **Moeda:** {symbol_name}
+- **Timeframe RSI:** {timeframe}  
+- **RSI Atual:** {rsi_val} → {rsi_class}  
+- **EMAs Semanais:**
+  - EMA 8: ${ema8:,.2f}
+  - EMA 21: ${ema21:,.2f}
+  - EMA 56: ${ema56:,.2f}
+  - EMA 200: ${ema200:,.2f}  
+- **Tendência pelas EMAs:** {estrutura}  
+- **Volume:** {tendencia_volume}  
+- **📌 Recomendação Final:** {rec}
+""")
 
+# Histórico
 res = {
-    "Moeda": symbol_name, "Tipo de Trade": tipo_trade, "Timeframe RSI": timeframe,
-    "RSI": rsi_val, "Classificação RSI": rsi_class, "EMA 8w": f"${ema8:,.2f}",
-    "EMA 21w": f"${ema21:,.2f}", "EMA 56w": f"${ema56:,.2f}", "EMA 200w": f"${ema200:,.2f}",
-    "Volume Atual": f"{volume:,.0f}", "Tendência Volume": tendencia_volume,
-    "Estrutura EMAs Semanais": estrutura, "Recomendação": rec
+    "Moeda": symbol_name, "Timeframe RSI": timeframe, "RSI": rsi_val, "Classificação RSI": rsi_class,
+    "EMA8": ema8, "EMA21": ema21, "EMA56": ema56, "EMA200": ema200,
+    "Tendência": estrutura, "Volume": tendencia_volume, "Recomendação": rec,
+    "Data": datetime.now().strftime("%d/%m %H:%M")
 }
 
-st.subheader("📋 Resultado da Análise")
-st.dataframe(pd.DataFrame([res]), use_container_width=True, hide_index=True)
-
-if st.button("📌 Salvar Análise"):
+colh1, colh2 = st.columns([1, 1])
+if colh1.button("💾 Salvar Análise"):
     st.session_state["historico"].append(res)
-    st.success("Salvo no histórico!")
+    st.success("Análise salva!")
 
 if st.session_state["historico"]:
-    st.subheader("📚 Histórico")
+    st.subheader("📚 Histórico de Análises")
     df_hist = pd.DataFrame(st.session_state["historico"])
     st.dataframe(df_hist, use_container_width=True, hide_index=True)
     st.download_button("⬇️ Baixar CSV", df_hist.to_csv(index=False).encode(), "historico.csv", "text/csv")
 
-if st.button("🧹 Limpar"):
+if colh2.button("🧹 Limpar Tudo"):
     st.session_state["historico"] = []
     st.experimental_rerun()
