@@ -4,6 +4,7 @@ import requests
 from datetime import datetime
 from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="Análise Cripto Técnica", layout="wide")
 st.title("📊 Análise Técnica de Criptomoedas com RSI, EMAs e Volume")
@@ -64,6 +65,19 @@ def gerar_recomendacao(tendencia, rsi_status, volume_status):
         return "🟡 Esperar"
     return "🔎 Análise inconclusiva"
 
+@st.cache_data(ttl=1800)
+def get_fear_greed_index():
+    url = "https://api.alternative.me/fng/"
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+        data = r.json()
+        valor = int(data["data"][0]["value"])
+        classificacao = data["data"][0]["value_classification"]
+        return valor, classificacao
+    except:
+        return None, None
+
 # ========== Interface ==========
 
 moedas = ["BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "SHIB", "LTC"]
@@ -123,3 +137,35 @@ with st.container():
         st.write(f"**EMA 56:** {ema56:.2f}")
         st.write(f"**EMA 200:** {ema200:.2f}")
         st.write(f"**Tendência pelas EMAs:** {tendencia}")
+
+# ========== Fear & Greed Gauge ==========
+
+st.markdown("---")
+st.subheader("📊 Sentimento de Mercado – Fear & Greed Index")
+
+fng_valor, fng_class = get_fear_greed_index()
+if fng_valor is not None:
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=fng_valor,
+        domain={"x": [0, 1], "y": [0, 1]},
+        title={"text": f"Índice de Medo e Ganância ({fng_class})"},
+        gauge={
+            "axis": {"range": [0, 100]},
+            "bar": {"color": "darkblue"},
+            "steps": [
+                {"range": [0, 25], "color": "red"},
+                {"range": [25, 50], "color": "orange"},
+                {"range": [50, 75], "color": "lightgreen"},
+                {"range": [75, 100], "color": "green"},
+            ],
+            "threshold": {
+                "line": {"color": "black", "width": 4},
+                "thickness": 0.75,
+                "value": fng_valor,
+            }
+        }
+    ))
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.warning("⚠️ Não foi possível carregar o índice de sentimento agora.")
