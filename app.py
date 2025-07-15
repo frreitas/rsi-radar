@@ -91,43 +91,39 @@ def obter_recomendacao(tendencia, rsi, volume):
             return "Venda parcial"
     return "Aguardar"
 
-# ========= Layout =========
+def style_recomendacao_card(text):
+    styles = {
+        "Compra": ("Compra Forte", "#28a745"),
+        "Acumular / Espera": ("Atenção", "#ffc107"),
+        "Aguardar correção": ("Aguardar", "#fd7e14"),
+        "Venda / Evitar": ("Venda Forte", "#dc3545"),
+        "Observar": ("Observar", "#0d6efd"),
+        "Espera": ("Espera", "#6c757d"),
+        "Venda parcial": ("Venda Parcial", "#f5c6cb"),
+        "Aguardar": ("Aguardar", "#6c757d"),
+    }
+    texto, cor = styles.get(text, ("Desconhecido", "#6c757d"))
+    return texto, cor
+
+# ========= Interface =========
 
 top_moedas = get_top_100_cryptos()
-col1, col2, col3 = st.columns([2, 1, 1])
+col1, col2 = st.columns([2, 1])
 
 with col1:
     moeda_selecionada = st.selectbox("Moeda", top_moedas)
     simbolo = extrair_simbolo(moeda_selecionada)
 with col2:
     timeframe_rsi = st.selectbox("Timeframe RSI", ["1h", "4h", "1d", "1w", "1M"], index=2)
-with col3:
-    fear_greed = get_fear_greed_index()
-    if fear_greed is not None:
-        gauge = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=fear_greed,
-            title={"text": "Sentimento (F&G)"},
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': "darkblue"},
-                'steps': [
-                    {'range': [0, 25], 'color': "#d9534f"},
-                    {'range': [25, 50], 'color': "#f0ad4e"},
-                    {'range': [50, 75], 'color': "#5bc0de"},
-                    {'range': [75, 100], 'color': "#5cb85c"},
-                ],
-            }))
-        st.plotly_chart(gauge, use_container_width=True)
 
 st.divider()
 st.subheader("📈 Dados Técnicos")
 
 with st.spinner("Carregando..."):
 
-    # Coleta dos dados
-    df_rsi = get_crypto_data(simbolo, get_timeframe_endpoint(timeframe_rsi))
-    df_diario = get_crypto_data(simbolo, "histoday")  # sempre para preco atual e EMAs
+    endpoint_rsi = get_timeframe_endpoint(timeframe_rsi)
+    df_rsi = get_crypto_data(simbolo, endpoint_rsi, limit=200)
+    df_diario = get_crypto_data(simbolo, "histoday", limit=400)  # EMAs semanais calculadas do diário (aprox)
 
     if df_rsi.empty or df_diario.empty or len(df_diario) < 200:
         st.error("Erro: Dados insuficientes.")
@@ -151,16 +147,16 @@ with st.spinner("Carregando..."):
     tendencia = classificar_tendencia(ema8, ema21, ema56, ema200)
     volume_class = classificar_volume(volume_atual, volume_medio)
     recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class)
+    texto_card, cor_card = style_recomendacao_card(recomendacao)
 
 # ========= Exibição dos Resultados =========
 
 met1, met2, met3 = st.columns(3)
-met1.metric("Preço Atual (USD)", f"${preco_atual:,.2f}", f"{variacao_dia:.2f}%")
-met2.metric("Volume (24h)", f"${volume_atual:,.2f}")
-met3.metric("Volume Médio", f"${volume_medio:,.2f}")
+met1.metric("💵 Preço Atual", f"${preco_atual:,.2f}", f"{variacao_dia:.2f}%")
+met2.metric("📊 Volume (24h)", f"${volume_atual:,.2f}")
+met3.metric("📉 Volume Médio", f"${volume_medio:,.2f}")
 
 st.divider()
-
 st.subheader(f"🔍 Análise Técnica – {moeda_selecionada}")
 
 st.markdown(f"""
@@ -170,4 +166,44 @@ st.markdown(f"""
 """)
 
 st.subheader("📌 Recomendação Final")
-st.markdown(f"## {recomendacao}")
+
+# Card visual da recomendação
+st.markdown(f"""
+<div style="
+    border: 2px solid {cor_card};
+    border-radius: 8px;
+    background-color: {cor_card}22;
+    padding: 20px;
+    width: fit-content;
+    font-weight: 600;
+    font-size: 24px;
+    color: {cor_card};
+    ">
+    {texto_card}
+</div>
+""", unsafe_allow_html=True)
+
+# ========= Sentimento do Mercado =========
+
+st.divider()
+st.subheader("📊 Sentimento do Mercado (Fear & Greed Index)")
+
+fear_greed = get_fear_greed_index()
+if fear_greed is not None:
+    gauge = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=fear_greed,
+        title={"text": "Índice de Medo e Ganância"},
+        gauge={
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "darkblue"},
+            'steps': [
+                {'range': [0, 25], 'color': "#d9534f"},
+                {'range': [25, 50], 'color': "#f0ad4e"},
+                {'range': [50, 75], 'color': "#5bc0de"},
+                {'range': [75, 100], 'color': "#5cb85c"},
+            ],
+        }))
+    st.plotly_chart(gauge, use_container_width=True)
+else:
+    st.warning("Índice de sentimento indisponível no momento.")
