@@ -39,18 +39,6 @@ def get_top_coins(n=100):
         st.error(f"Erro ao buscar top moedas CoinGecko: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=600)
-def get_binance_symbols():
-    url = "https://api.binance.com/api/v3/exchangeInfo"
-    try:
-        r = requests.get(url, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        return [s["symbol"] for s in data["symbols"]]
-    except Exception as e:
-        st.error(f"Erro ao obter símbolos da Binance: {e}")
-        return []
-
 @st.cache_data(ttl=300)
 def get_binance_klines(symbol: str, interval: str, limit: int = 500):
     url = "https://api.binance.com/api/v3/klines"
@@ -72,7 +60,7 @@ def get_binance_klines(symbol: str, interval: str, limit: int = 500):
         df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
         return df
     except Exception as e:
-        st.error(f"Erro ao obter candles Binance para {symbol}: {e}")
+        st.warning(f"Erro ao obter candles Binance para {symbol}: {e}")
         return pd.DataFrame()
 
 def calcular_indicadores(df):
@@ -125,11 +113,6 @@ if botao_analise:
             st.warning("Nenhuma moeda encontrada no CoinGecko.")
             st.stop()
 
-        symbols_binance = get_binance_symbols()
-        if not symbols_binance:
-            st.warning("Não foi possível obter lista de símbolos da Binance.")
-            st.stop()
-
         if input_moeda.strip():
             symbols = [input_moeda.strip().upper()]
         else:
@@ -140,10 +123,6 @@ if botao_analise:
 
         resultados = []
         for symbol in symbols:
-            if symbol not in symbols_binance:
-                st.warning(f"Símbolo {symbol} não listado na Binance. Ignorando.")
-                continue
-
             df_candles = get_binance_klines(symbol, INTERVALOS_BINANCE[intervalo])
             if df_candles.empty:
                 st.warning(f"Sem dados de candles para {symbol}")
