@@ -11,4 +11,4 @@ st.markdown("Analisa as 100 principais criptos com RSI e EMAs em tempo real via 
 # ====== INTERVALO ESCOLHIDO PELO USUÁRIO ======
 intervalo = st.selectbox("⏱️ Intervalo de tempo", ["1h", "4h", "1d"], index=0)
 binance_interval = {"1h": "1h", "4h": "4h", "1d": "1d"}[intervalo]
-limite_vela_
+limite_velas = 100
