@@ -1,30 +1,33 @@
 import streamlit as st
 import pandas as pd
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 
 st.set_page_config(page_title="Radar RSI Cripto", layout="wide")
 st.title("📊 Radar RSI com Tendência de Alta")
-st.markdown("Analisa as 100 principais criptos com RSI e EMAs em tempo real via Binance API.")
+st.markdown("Analisa as principais criptos com RSI e EMAs em tempo real via Binance API.")
 
-# ====== INTERVALO ESCOLHIDO PELO USUÁRIO ======
+# ===== INTERVALOS E PARÂMETROS =====
 intervalo = st.selectbox("⏱️ Intervalo de tempo", ["1h", "4h", "1d"], index=0)
 binance_interval = {"1h": "1h", "4h": "4h", "1d": "1d"}[intervalo]
 limite_velas = 100
 
-# ====== FUNÇÕES AUXILIARES ======
+# Filtro por Top moedas
+limite_moedas = st.selectbox("🏆 Quantidade de moedas a analisar", [20, 50, 100], index=2)
+
+# Botão de atualização
+executar_analise = st.button("🔄 Atualizar agora")
+
+# ===== FUNÇÕES AUXILIARES =====
 @st.cache_data(ttl=300)
-def get_top_100_symbols():
-    """
-    Retorna os 100 principais símbolos de moedas via CoinGecko API,
-    transformando para o padrão da Binance (ex: BTC → BTCUSDT).
-    """
+def get_top_symbols(limit=100):
     url = "https://api.coingecko.com/api/v3/coins/markets"
     params = {
         "vs_currency": "usd",
         "order": "market_cap_desc",
-        "per_page": 100,
+        "per_page": limit,
         "page": 1
     }
     try:
@@ -39,12 +42,11 @@ def get_top_100_symbols():
                     symbols.append(symbol + "USDT")
         return symbols
     except Exception as e:
-        st.error(f"Erro ao buscar top 100 moedas: {e}")
+        st.error(f"Erro ao buscar top moedas: {e}")
         return []
 
 @st.cache_data(ttl=300)
 def get_klines(symbol, interval="1h", limit=100):
-    """Pega histórico de candles do Binance"""
     url = f"https://api.binance.com/api/v3/klines"
     params = {"symbol": symbol, "interval": interval, "limit": limit}
     r = requests.get(url, params=params)
@@ -90,30 +92,36 @@ def analisar_moeda(symbol):
         "RSI": round(rsi, 2),
         "Classificação RSI": classificar_rsi(rsi),
         "Tendência": classificar_tendencia(ema20, ema50),
-        "Alerta": "✅ RSI ≤ 30 e Tendência de Alta" if rsi <= 30 and ema20 > ema50 else ""
+        "Alerta": "🔔" if rsi <= 30 and ema20 > ema50 else ""
     }
 
-# ====== EXECUÇÃO PRINCIPAL ======
-with st.spinner("🔍 Analisando mercado..."):
-    symbols = get_top_100_symbols()
-    resultados = []
-    for sym in symbols:
-        analise = analisar_moeda(sym)
-        if analise:
-            resultados.append(analise)
+# ===== EXECUÇÃO =====
+if executar_analise:
+    with st.spinner("🔍 Analisando mercado..."):
+        symbols = get_top_symbols(limit=limite_moedas)
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            resultados = list(executor.map(analisar_moeda, symbols))
+        resultados = [r for r in resultados if r]
 
-# ====== EXIBIÇÃO ======
-if resultados:
-    df = pd.DataFrame(resultados)
-    alertas = df[df["Alerta"] != ""]
+    if resultados:
+        df = pd.DataFrame(resultados)
 
-    st.subheader("📋 Resultado Geral")
-    st.dataframe(df, use_container_width=True)
+        # Filtro por classificação RSI
+        filtro_rsi = st.multiselect(
+            "📌 Filtrar por classificação RSI",
+            options=["Sobrevendida", "Neutra", "Sobrecomprada"],
+            default=["Sobrevendida", "Neutra", "Sobrecomprada"]
+        )
+        df_filtrado = df[df["Classificação RSI"].isin(filtro_rsi)]
 
-    if not alertas.empty:
-        st.subheader("🚨 Alertas Encontrados")
-        st.dataframe(alertas, use_container_width=True)
+        st.subheader("📋 Resultado Geral")
+        st.dataframe(df_filtrado, use_container_width=True)
+
+        alertas = df_filtrado[df_filtrado["Alerta"] != ""]
+        if not alertas.empty:
+            st.subheader("🚨 Alertas Encontrados")
+            st.dataframe(alertas, use_container_width=True)
+        else:
+            st.success("Nenhuma moeda com RSI ≤ 30 e tendência de alta no momento.")
     else:
-        st.success("Nenhuma moeda com RSI ≤ 30 e tendência de alta no momento.")
-else:
-    st.warning("⚠️ Nenhum dado válido retornado pela API.")
+        st.warning("⚠️ Nenhum dado válido retornado pela API.")
