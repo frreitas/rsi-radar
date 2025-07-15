@@ -38,7 +38,7 @@ h1 {
     padding: 25px 30px;
     font-weight: 700;
     font-size: 28px;
-    max-width: 450px;
+    max-width: 400px;
     margin: 20px auto;
     box-shadow: 0 5px 20px rgb(0 0 0 / 0.12);
     text-align: center;
@@ -61,50 +61,133 @@ h1 {
 
 st.title("📊 Análise Técnica de Criptomoedas")
 
-# (funções auxiliares get_top_100_cryptos, extrair_simbolo, get_timeframe_endpoint, get_crypto_data, get_fear_greed_index, agrupar_4h, classificar_rsi, classificar_tendencia, classificar_volume permanecem iguais)
+# --- Funções auxiliares ---
+
+@st.cache_data(ttl=3600)
+def get_top_100_cryptos():
+    url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
+    try:
+        res = requests.get(url)
+        res.raise_for_status()
+        data = res.json()["Data"]
+        return [f"{c['CoinInfo']['FullName']} ({c['CoinInfo']['Name']})" for c in data]
+    except:
+        return ["Bitcoin (BTC)", "Ethereum (ETH)", "Solana (SOL)"]
+
+def extrair_simbolo(moeda_str):
+    return moeda_str.split("(")[-1].replace(")", "").strip()
+
+@st.cache_data(ttl=600)
+def get_timeframe_endpoint(timeframe):
+    # Retorna o endpoint e o limite para API CryptoCompare
+    if timeframe == "1h":
+        return "histohour", 200
+    elif timeframe == "4h":
+        # pegar histohour com salto? CryptoCompare não tem 4h direto, pegamos 1h e agrupamos
+        return "histohour", 800  # pegar 800h para agrupar 4h depois
+    elif timeframe in ["1d", "1w", "1M"]:
+        return "histoday", 200
+    else:
+        return "histoday", 200
+
+@st.cache_data(ttl=600)
+def get_crypto_data(symbol, endpoint="histoday", limit=200):
+    url = f"https://min-api.cryptocompare.com/data/v2/{endpoint}?fsym={symbol}&tsym=USD&limit={limit}"
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+        data = r.json()["Data"]["Data"]
+        df = pd.DataFrame(data)
+        df["close"] = df["close"].astype(float)
+        df["volume"] = df["volumeto"].astype(float)
+        return df
+    except Exception as e:
+        st.error(f"Erro ao buscar dados de {symbol}: {e}")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=1800)
+def get_fear_greed_index():
+    url = "https://api.alternative.me/fng/?limit=1"
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+        valor = int(r.json()["data"][0]["value"])
+        return valor
+    except:
+        return None
+
+def agrupar_4h(df_horas):
+    # Agrupa dados de 1h para 4h somando volume e pegando fechamento final e abertura inicial
+    if df_horas.empty:
+        return df_horas
+    df_horas = df_horas.copy()
+    df_horas['time4h'] = (df_horas.index // 4)
+    grouped = df_horas.groupby('time4h').agg({
+        'time': 'last',
+        'close': 'last',
+        'volume': 'sum',
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+    }).reset_index(drop=True)
+    return grouped
+
+def classificar_rsi(rsi):
+    if rsi < 30: return "Sobrevendido"
+    elif rsi > 70: return "Sobrecomprado"
+    else: return "Neutro"
+
+def classificar_tendencia(ema8, ema21, ema56, ema200):
+    if ema8 > ema21 > ema56 > ema200:
+        return "Alta consolidada"
+    elif ema8 < ema21 < ema56 < ema200:
+        return "Baixa consolidada"
+    return "Neutra/Transição"
+
+def classificar_volume(v_atual, v_medio):
+    return "Subindo" if v_atual >= v_medio else "Caindo"
 
 def obter_recomendacao(tendencia, rsi, volume):
-    # rsi: Sobrevendido, Neutro, Sobrecomprado
-    # volume: Subindo, Caindo
     if tendencia == "Alta consolidada":
         if rsi == "Sobrevendido" and volume == "Subindo":
-            return "✅ Compra"
+            return "Compra"
         elif rsi == "Neutro" and volume == "Subindo":
-            return "🟡 Acumular / Espera"
+            return "Acumular / Espera"
         elif rsi == "Sobrecomprado" and volume == "Subindo":
-            return "⚠️ Aguardar correção"
+            return "Aguardar correção"
     elif tendencia == "Baixa consolidada":
         if rsi == "Sobrevendido" and volume == "Subindo":
-            return "⚠️ Observar reversão potencial com stop curto"
+            return "Observar reversão potencial com stop curto"
         elif volume == "Caindo":
-            return "❌ Venda / Evitar"
+            return "Venda / Evitar"
         elif rsi == "Neutro" and volume == "Subindo":
-            return "⚠️ Observar cautelosamente"
+            return "Observar cautelosamente"
         else:
-            return "❌ Venda / Evitar"
+            return "Venda / Evitar"
     elif tendencia == "Neutra/Transição":
         if rsi == "Sobrevendido" and volume == "Subindo":
-            return "⚠️ Observar"
+            return "Observar"
         elif rsi == "Neutro" and volume == "Caindo":
-            return "🟡 Espera"
-        elif rsi == "Sobrecomprado" and volume == "Subindo":
-            return "⚠️ Venda parcial para quem já está comprado; observar topo para quem não está dentro"
-        elif rsi == "Sobrecomprado" and volume == "Caindo":
-            return "🟡 Esperar topo confirmado"
+            return "Espera"
+        elif rsi == "Sobrecomprado":
+            if volume == "Subindo":
+                return "Venda parcial para quem já está comprado; observar topo para quem não está dentro"
+            else:
+                return "Esperar topo confirmado"
     return "Aguardar"
 
 def style_recomendacao_card(text):
     styles = {
-        "✅ Compra": ("Compra Forte", "rec-compra"),
-        "🟡 Acumular / Espera": ("Atenção", "rec-acumular"),
-        "⚠️ Aguardar correção": ("Aguardar", "rec-agardar"),
-        "❌ Venda / Evitar": ("Venda Forte", "rec-venda"),
-        "⚠️ Observar": ("Observar", "rec-observar"),
-        "🟡 Espera": ("Espera", "rec-espera"),
-        "⚠️ Venda parcial para quem já está comprado; observar topo para quem não está dentro": ("Venda Parcial", "rec-vendaparcial"),
-        "⚠️ Observar reversão potencial com stop curto": ("Observar Reversão", "rec-observar"),
-        "⚠️ Observar cautelosamente": ("Observar Cautelosamente", "rec-observar"),
-        "🟡 Esperar topo confirmado": ("Esperar Topo Confirmado", "rec-espera"),
+        "Compra": ("Compra Forte", "rec-compra"),
+        "Acumular / Espera": ("Atenção", "rec-acumular"),
+        "Aguardar correção": ("Aguardar", "rec-agardar"),
+        "Venda / Evitar": ("Venda Forte", "rec-venda"),
+        "Observar": ("Observar", "rec-observar"),
+        "Espera": ("Espera", "rec-espera"),
+        "Venda parcial para quem já está comprado; observar topo para quem não está dentro": ("Venda Parcial", "rec-vendaparcial"),
+        "Observar reversão potencial com stop curto": ("Observar Reversão", "rec-observar"),
+        "Observar cautelosamente": ("Observar Cautelosamente", "rec-observar"),
+        "Esperar topo confirmado": ("Esperar Topo Confirmado", "rec-espera"),
         "Aguardar": ("Aguardar", "rec-default"),
     }
     return styles.get(text, ("Desconhecido", "rec-default"))
@@ -130,6 +213,7 @@ with st.spinner("Carregando dados..."):
 
     # Ajuste para 4h - agrupar dados de 1h em blocos de 4 horas
     if timeframe_rsi == "4h" and not df_rsi_raw.empty:
+        # Preparar índice para agrupamento
         df_rsi_raw = df_rsi_raw.reset_index(drop=True)
         df_rsi_raw["time"] = pd.to_datetime(df_rsi_raw["time"], unit='s')
         df_rsi_raw.index = range(len(df_rsi_raw))
@@ -139,7 +223,7 @@ with st.spinner("Carregando dados..."):
         if not df_rsi.empty:
             df_rsi["time"] = pd.to_datetime(df_rsi["time"], unit='s')
 
-    # Dados diários
+    # Dados semanais para EMAs: usar histoday e pegar média semanal para suavizar
     df_diario = get_crypto_data(simbolo, "histoday", 400)
     if df_diario.empty or df_rsi.empty or len(df_diario) < 200:
         st.error("Dados insuficientes para análise. Tente novamente mais tarde.")
@@ -154,26 +238,16 @@ with st.spinner("Carregando dados..."):
     volume_atual = df_diario["volume"].iloc[-1]
     volume_medio = df_diario["volume"].mean()
 
-    # Calcular RSI Diário
-    rsi_diario_valor = RSIIndicator(close=df_diario["close"], window=14).rsi().iloc[-1]
-    rsi_diario_class = classificar_rsi(rsi_diario_valor)
+    # Calcular RSI no timeframe selecionado
+    rsi_valor = RSIIndicator(close=df_rsi["close"], window=14).rsi().iloc[-1]
+    rsi_class = classificar_rsi(rsi_valor)
 
-    # Calcular RSI Semanal
+    # EMAs sempre no semanal (usamos média das fechamentos diários agrupados por semana)
     df_diario["date"] = pd.to_datetime(df_diario["time"], unit='s')
-    df_semanal = df_diario.resample('W-MON', on="date").last()
+    df_semanal = df_diario.resample('W-MON', on="date").last()  # semana começa na segunda
     if len(df_semanal) < 50:
-        st.warning("Poucos dados semanais para análise precisa.")
-    rsi_semanal_valor = RSIIndicator(close=df_semanal["close"], window=14).rsi().iloc[-1]
-    rsi_semanal_class = classificar_rsi(rsi_semanal_valor)
+        st.warning("Poucos dados semanais para EMAs, análise pode não ser precisa.")
 
-    # Calcular RSI Mensal
-    df_mensal = df_diario.resample('M', on="date").last()
-    if len(df_mensal) < 14:
-        st.warning("Poucos dados mensais para análise precisa.")
-    rsi_mensal_valor = RSIIndicator(close=df_mensal["close"], window=14).rsi().iloc[-1]
-    rsi_mensal_class = classificar_rsi(rsi_mensal_valor)
-
-    # EMAs Semanais (base para tendência)
     ema8 = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator().iloc[-1]
     ema21 = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-1]
     ema56 = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-1]
@@ -181,9 +255,7 @@ with st.spinner("Carregando dados..."):
 
     tendencia = classificar_tendencia(ema8, ema21, ema56, ema200)
     volume_class = classificar_volume(volume_atual, volume_medio)
-
-    # Usar RSI diário para recomendação final (você pode ajustar para outro se quiser)
-    recomendacao = obter_recomendacao(tendencia, rsi_diario_class, volume_class)
+    recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class)
     texto_card, classe_card = style_recomendacao_card(recomendacao)
 
 # --- Exibição ---
@@ -199,11 +271,7 @@ with st.container():
     st.markdown(f"""
     <div class="analysis-container">
         <h4 style="color:#334155;">Tendência (EMAs Semanais): <strong>{tendencia}</strong></h4>
-        <h4 style="color:#334155;">
-            RSI Diário: <strong>{rsi_diario_valor:.2f} – {rsi_diario_class}</strong><br>
-            RSI Semanal: <strong>{rsi_semanal_valor:.2f} – {rsi_semanal_class}</strong><br>
-            RSI Mensal: <strong>{rsi_mensal_valor:.2f} – {rsi_mensal_class}</strong>
-        </h4>
+        <h4 style="color:#334155;">RSI ({timeframe_rsi}): <strong>{rsi_valor:.2f} – {rsi_class}</strong></h4>
         <h4 style="color:#334155;">Volume Atual vs. Médio: <strong>{volume_class}</strong></h4>
     </div>
     """, unsafe_allow_html=True)
