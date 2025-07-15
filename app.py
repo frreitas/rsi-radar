@@ -3,21 +3,16 @@ import pandas as pd
 import requests
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
+from datetime import datetime, timedelta
 import time
 
-st.set_page_config(page_title="Radar Técnico Cripto", layout="wide")
-st.title("📈 Radar Técnico Cripto - RSI + EMA20 + EMA50")
-st.markdown("""
-Aplicativo para análise técnica das principais criptomoedas.
-- Dados de moedas via CoinGecko API
-- Candles via Binance API
-- Indicadores calculados localmente com `ta`
-""")
+st.set_page_config(page_title="Radar Técnico Cripto - Coinbase", layout="wide")
+st.title("📈 Radar Técnico Cripto - RSI + EMA20 + EMA50 (Coinbase)")
 
-INTERVALOS_BINANCE = {
-    "1h": "1h",
-    "4h": "4h",
-    "1d": "1d"
+INTERVALOS = {
+    "1h": 3600,
+    "4h": 3600 * 4,
+    "1d": 3600 * 24
 }
 
 @st.cache_data(ttl=600)
@@ -39,28 +34,26 @@ def get_top_coins(n=100):
         st.error(f"Erro ao buscar top moedas CoinGecko: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=300)
-def get_binance_klines(symbol: str, interval: str, limit: int = 500):
-    url = "https://api.binance.com/api/v3/klines"
+def get_coinbase_candles(product_id: str, interval_seconds: int, days_back: int = 30):
+    end_time = datetime.utcnow()
+    start_time = end_time - timedelta(days=days_back)
+    url = f"https://api.pro.coinbase.com/products/{product_id}/candles"
     params = {
-        "symbol": symbol,
-        "interval": interval,
-        "limit": limit
+        "start": start_time.isoformat() + "Z",
+        "end": end_time.isoformat() + "Z",
+        "granularity": interval_seconds
     }
     try:
         r = requests.get(url, params=params, timeout=15)
         r.raise_for_status()
         data = r.json()
-        df = pd.DataFrame(data, columns=[
-            "open_time", "open", "high", "low", "close", "volume",
-            "close_time", "quote_asset_volume", "number_of_trades",
-            "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume", "ignore"
-        ])
-        df["close"] = df["close"].astype(float)
-        df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
+        # Coinbase retorna [time, low, high, open, close, volume]
+        df = pd.DataFrame(data, columns=["time", "low", "high", "open", "close", "volume"])
+        df["time"] = pd.to_datetime(df["time"], unit='s')
+        df = df.sort_values("time")
         return df
     except Exception as e:
-        st.warning(f"Erro ao obter candles Binance para {symbol}: {e}")
+        st.warning(f"Erro ao obter candles Coinbase para {product_id}: {e}")
         return pd.DataFrame()
 
 def calcular_indicadores(df):
@@ -98,11 +91,11 @@ def calcular_indicadores(df):
         "Tendência": tendencia
     }
 
-# Inputs UI
-top_n = st.slider("Número de moedas a analisar (top N do mercado)", 5, 100, 20)
-intervalo = st.selectbox("Intervalo de tempo", list(INTERVALOS_BINANCE.keys()), index=0)
+# UI Inputs
+top_n = st.slider("Número de moedas a analisar (top N do mercado)", 5, 50, 20)
+intervalo = st.selectbox("Intervalo de tempo", list(INTERVALOS.keys()), index=0)
 filtro_rsi = st.multiselect("Filtrar por classificação RSI", ["Sobrevendida", "Neutra", "Sobrecomprada"], default=["Sobrevendida", "Neutra", "Sobrecomprada"])
-input_moeda = st.text_input("Pesquisar símbolo de moeda (ex: BTCUSDT). Deixe vazio para usar top N.")
+input_moeda = st.text_input("Pesquisar símbolo de moeda (ex: BTC-USD). Deixe vazio para usar top N.")
 
 botao_analise = st.button("Iniciar análise")
 
@@ -118,12 +111,13 @@ if botao_analise:
         else:
             symbols = []
             for _, row in df_moedas.iterrows():
-                symbol_binance = row["symbol"].upper() + "USDT"
-                symbols.append(symbol_binance)
+                # Coinbase usa formato "BTC-USD"
+                symbol_cb = row["symbol"].upper() + "-USD"
+                symbols.append(symbol_cb)
 
         resultados = []
         for symbol in symbols:
-            df_candles = get_binance_klines(symbol, INTERVALOS_BINANCE[intervalo])
+            df_candles = get_coinbase_candles(symbol, INTERVALOS[intervalo])
             if df_candles.empty:
                 st.warning(f"Sem dados de candles para {symbol}")
                 continue
@@ -136,12 +130,12 @@ if botao_analise:
             preco_atual = df_candles["close"].iloc[-1]
             resultado = {
                 "Moeda": symbol,
-                "Preço Atual (USDT)": round(preco_atual, 4),
+                "Preço Atual (USD)": round(preco_atual, 4),
                 **indicadores
             }
             resultados.append(resultado)
 
-            time.sleep(0.15)  # Evita limite API
+            time.sleep(0.15)  # para evitar throttling
 
         if resultados:
             df_result = pd.DataFrame(resultados)
