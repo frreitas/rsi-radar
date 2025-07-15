@@ -5,54 +5,103 @@ from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 
 st.set_page_config(page_title="Radar RSI Cripto", layout="wide")
-
 st.title("📊 Radar RSI com Tendência de Alta")
-st.markdown("Filtra moedas com **RSI ≤ 30** e **tendência de alta** (EMA20 > EMA50) usando dados da Binance.")
+st.markdown("Analisa as 100 principais criptos em tempo real com RSI e EMAs.")
 
-symbols = [
-    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "DOGEUSDT", "XRPUSDT",
-    "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT", "TRXUSDT", "MATICUSDT"
-]
+# ====== OPÇÕES DO USUÁRIO ======
+intervalo = st.selectbox("⏱️ Intervalo de tempo", ["1h", "4h", "1d"], index=0)
+mapa_intervalo = {"1h": "1h", "4h": "4h", "1d": "1d"}
+binance_interval = {"1h": "1h", "4h": "4h", "1d": "1d"}[intervalo]
+limite_velas = 100
+
+@st.cache_data(ttl=300)
+def get_top_100_symbols():
+    """Pega os top 100 pares via CoinGecko"""
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 100, "page": 1}
+    res = requests.get(url, params=params)
+    coins = res.json()
+    symbols = []
+    for coin in coins:
+        symbol = coin["symbol"].upper()
+        if symbol != "USDT":
+            symbols.append(symbol + "USDT")
+    return symbols
 
 @st.cache_data(ttl=300)
 def get_klines(symbol, interval="1h", limit=100):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    r = requests.get(url)
+    """Pega histórico de candles do Binance"""
+    url = f"https://api.binance.com/api/v3/klines"
+    params = {"symbol": symbol, "interval": interval, "limit": limit}
+    r = requests.get(url, params=params)
+    if r.status_code != 200:
+        return None
     df = pd.DataFrame(r.json(), columns=[
-        "timestamp", "open", "high", "low", "close", "volume", "close_time",
-        "qav", "trades", "tb_base", "tb_quote", "ignore"
+        "timestamp", "open", "high", "low", "close", "volume",
+        "close_time", "quote_asset_volume", "number_of_trades",
+        "taker_buy_base", "taker_buy_quote", "ignore"
     ])
     df["close"] = df["close"].astype(float)
     return df
 
-def analyze(symbol):
-    try:
-        df = get_klines(symbol)
-        if df.empty or len(df) < 50:
-            return None
+def classificar_rsi(rsi):
+    if rsi <= 30:
+        return "Sobrevendida"
+    elif rsi >= 70:
+        return "Sobrecomprada"
+    else:
+        return "Neutra"
 
-        rsi = RSIIndicator(close=df["close"]).rsi()
-        ema20 = EMAIndicator(close=df["close"], window=20).ema_indicator()
-        ema50 = EMAIndicator(close=df["close"], window=50).ema_indicator()
-        last = df.iloc[-1]
+def classificar_tendencia(ema20, ema50):
+    if ema20 > ema50:
+        return "Alta"
+    elif ema20 < ema50:
+        return "Baixa"
+    else:
+        return "Neutra"
 
-        return {
-            "Moeda": symbol,
-            "Preço": round(last["close"], 4),
-            "RSI": round(rsi.iloc[-1], 2),
-            "Tendência de Alta": ema20.iloc[-1] > ema50.iloc[-1]
-        }
-    except Exception as e:
+def analisar_moeda(symbol):
+    df = get_klines(symbol, interval=binance_interval, limit=limite_velas)
+    if df is None or df.empty or len(df) < 50:
         return None
 
-# Analisar moedas
-dados = [analyze(sym) for sym in symbols]
-df = pd.DataFrame([d for d in dados if d is not None])
+    rsi = RSIIndicator(close=df["close"]).rsi().iloc[-1]
+    ema20 = EMAIndicator(close=df["close"], window=20).ema_indicator().iloc[-1]
+    ema50 = EMAIndicator(close=df["close"], window=50).ema_indicator().iloc[-1]
+
+    preco = df["close"].iloc[-1]
+
+    return {
+        "Moeda": symbol.replace("USDT", ""),
+        "Preço (USDT)": round(preco, 4),
+        "RSI": round(rsi, 2),
+        "Classificação RSI": classificar_rsi(rsi),
+        "Tendência": classificar_tendencia(ema20, ema50),
+        "Alerta": "✅ RSI ≤ 30 e Tendência de Alta" if rsi <= 30 and ema20 > ema50 else ""
+    }
+
+# ====== EXECUÇÃO PRINCIPAL ======
+with st.spinner("⏳ Analisando mercado..."):
+    symbols = get_top_100_symbols()
+    resultados = []
+    for sym in symbols:
+        analise = analisar_moeda(sym)
+        if analise:
+            resultados.append(analise)
 
 # Mostrar resultados
-if not df.empty:
-    resultado = df[(df["RSI"] <= 30) & (df["Tendência de Alta"] == True)]
-    st.success(f"Moedas encontradas: {len(resultado)}")
-    st.dataframe(resultado, use_container_width=True)
+if resultados:
+    df = pd.DataFrame(resultados)
+    alertas = df[df["Alerta"] != ""]
+
+    st.subheader("📋 Resultado Completo")
+    st.dataframe(df, use_container_width=True)
+
+    if not alertas.empty:
+        st.subheader("🚨 Alertas")
+        st.dataframe(alertas, use_container_width=True)
+    else:
+        st.success("Nenhuma moeda está com RSI ≤ 30 e tendência de alta neste momento.")
+
 else:
-    st.warning("Nenhum dado válido retornado pela API.")
+    st.warning("Nenhum dado válido retornado.")
