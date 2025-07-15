@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import time
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 
@@ -27,13 +28,11 @@ def get_top_coins(n=100):
     return df
 
 def validar_id_coin(coin_id):
-    """Valida o formato do id da moeda para evitar chamadas inválidas."""
     if not isinstance(coin_id, str):
         return False
     coin_id = coin_id.strip()
     if coin_id == "":
         return False
-    # Condições comuns para ID CoinGecko: só letras, números e hífen permitido
     import re
     if not re.fullmatch(r"[a-z0-9-]+", coin_id):
         return False
@@ -117,7 +116,6 @@ if botao:
                 st.warning("Moeda não encontrada.")
                 st.stop()
 
-        # Pré-validação dos IDs
         df_coins["id_valido"] = df_coins["id"].apply(validar_id_coin)
         df_coins_validas = df_coins[df_coins["id_valido"]]
 
@@ -149,6 +147,8 @@ if botao:
                 "Variação 24h (%)": round(variacao, 2),
                 **indicadores
             })
+
+            time.sleep(1.5)  # pausa para evitar rate limit CoinGecko
 
         if resultados:
             df_res = pd.DataFrame(resultados)
