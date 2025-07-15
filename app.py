@@ -1,28 +1,53 @@
 import streamlit as st
 import pandas as pd
 import requests
+from datetime import datetime, timedelta
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
 
 st.set_page_config(page_title="Análise Técnica de Criptomoedas", layout="wide")
 st.title("📊 Análise Técnica de Criptomoedas")
 
-# ========= Funções Auxiliares =========
+# ========= Funções auxiliares =========
 
 @st.cache_data(ttl=3600)
-def get_top_100_symbols():
+def get_top_100_cryptos():
     url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
     try:
         res = requests.get(url)
         res.raise_for_status()
         data = res.json()["Data"]
-        return [coin["CoinInfo"]["Name"] for coin in data]
+        moedas = []
+        for item in data:
+            nome = item["CoinInfo"]["FullName"]
+            simbolo = item["CoinInfo"]["Name"]
+            moedas.append(f"{nome} ({simbolo})")
+        return moedas
     except:
-        return ["BTC", "ETH", "XRP", "LTC", "ADA"]
+        return ["Bitcoin (BTC)", "Ethereum (ETH)", "Solana (SOL)"]
+
+def extrair_simbolo(moeda_selecionada):
+    return moeda_selecionada.split("(")[-1].replace(")", "").strip()
 
 @st.cache_data(ttl=600)
-def get_crypto_data(symbol="BTC", limit=300):
-    url = f"https://min-api.cryptocompare.com/data/v2/histoday?fsym={symbol}&tsym=USD&limit={limit}"
+def get_start_date_by_timeframe(timeframe: str):
+    now = datetime.utcnow()
+    if timeframe == "1h":
+        return now - timedelta(hours=400), "histohour"
+    elif timeframe == "4h":
+        return now - timedelta(hours=1600), "histohour"
+    elif timeframe == "1d":
+        return now - timedelta(days=400), "histoday"
+    elif timeframe == "1w":
+        return now - timedelta(weeks=400), "histoday"
+    elif timeframe == "1M":
+        return now - timedelta(days=400 * 30), "histoday"
+    else:
+        return now - timedelta(days=400), "histoday"
+
+@st.cache_data(ttl=600)
+def get_crypto_data(symbol="BTC", endpoint="histoday", limit=400):
+    url = f"https://min-api.cryptocompare.com/data/v2/{endpoint}?fsym={symbol}&tsym=USD&limit={limit}"
     try:
         res = requests.get(url)
         res.raise_for_status()
@@ -32,7 +57,7 @@ def get_crypto_data(symbol="BTC", limit=300):
         df["volume"] = df["volumeto"].astype(float)
         return df
     except Exception as e:
-        st.error(f"Erro ao obter dados da CryptoCompare: {e}")
+        st.error(f"Erro ao obter dados de {symbol}: {e}")
         return pd.DataFrame()
 
 def classificar_rsi(rsi):
@@ -75,42 +100,50 @@ def obter_recomendacao(tendencia, rsi, volume):
 
 # ========= Interface =========
 
-st.markdown("### 🔎 Selecione a Moeda e o Time Frame para RSI")
-col1, col2 = st.columns([2, 1])
-opcoes_moedas = get_top_100_symbols()
+col1, col2 = st.columns([2, 2])
+opcoes_moedas = get_top_100_cryptos()
 
 with col1:
-    moeda = st.selectbox("💰 Moeda:", opcoes_moedas, index=0)
+    moeda_selecionada = st.selectbox("💰 Moeda:", opcoes_moedas, index=0)
+    simbolo = extrair_simbolo(moeda_selecionada)
+
 with col2:
-    timeframe_rsi = st.selectbox("⏱️ Time Frame RSI:", ["1h", "4h", "1d", "1w", "1M"], index=2)
+    timeframe_rsi = st.selectbox("⏱️ Time Frame do RSI:", ["1h", "4h", "1d", "1w", "1M"], index=2)
 
 st.divider()
-st.subheader("📈 Análise Técnica da Moeda Selecionada")
+st.subheader("📈 Dados Técnicos")
 
-with st.spinner("🔄 Carregando dados..."):
-    df = get_crypto_data(symbol=moeda)
-    if df.empty or len(df) < 200:
+with st.spinner("🔄 Carregando..."):
+
+    # RSI timeframe
+    _, endpoint_rsi = get_start_date_by_timeframe(timeframe_rsi)
+    df_rsi = get_crypto_data(simbolo, endpoint=endpoint_rsi)
+
+    # EMAs fixas no semanal
+    df_ema = get_crypto_data(simbolo, endpoint="histoday")
+
+    if df_rsi.empty or df_ema.empty or len(df_ema) < 200:
         st.error("Erro: Dados insuficientes para análise.")
         st.stop()
 
-    preco_atual = df["close"].iloc[-1]
-    variacao = (df["close"].iloc[-1] - df["close"].iloc[-2]) / df["close"].iloc[-2] * 100
-    volume_atual = df["volume"].iloc[-1]
-    volume_medio = df["volume"].mean()
+    preco_atual = df_rsi["close"].iloc[-1]
+    variacao = (df_rsi["close"].iloc[-1] - df_rsi["close"].iloc[-2]) / df_rsi["close"].iloc[-2] * 100
+    volume_atual = df_rsi["volume"].iloc[-1]
+    volume_medio = df_rsi["volume"].mean()
 
-    rsi_valor = RSIIndicator(close=df["close"], window=14).rsi().iloc[-1]
+    rsi_valor = RSIIndicator(close=df_rsi["close"], window=14).rsi().iloc[-1]
     rsi_class = classificar_rsi(rsi_valor)
 
-    ema8 = EMAIndicator(close=df["close"], window=8).ema_indicator().iloc[-1]
-    ema21 = EMAIndicator(close=df["close"], window=21).ema_indicator().iloc[-1]
-    ema56 = EMAIndicator(close=df["close"], window=56).ema_indicator().iloc[-1]
-    ema200 = EMAIndicator(close=df["close"], window=200).ema_indicator().iloc[-1]
-    tendencia = classificar_tendencia(ema8, ema21, ema56, ema200)
+    ema8 = EMAIndicator(close=df_ema["close"], window=8).ema_indicator().iloc[-1]
+    ema21 = EMAIndicator(close=df_ema["close"], window=21).ema_indicator().iloc[-1]
+    ema56 = EMAIndicator(close=df_ema["close"], window=56).ema_indicator().iloc[-1]
+    ema200 = EMAIndicator(close=df_ema["close"], window=200).ema_indicator().iloc[-1]
 
+    tendencia = classificar_tendencia(ema8, ema21, ema56, ema200)
     volume_class = classificar_volume(volume_atual, volume_medio)
     recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class)
 
-# ========= Exibição =========
+# ========= Visualização =========
 
 col_a, col_b, col_c = st.columns(3)
 with col_a:
@@ -118,26 +151,16 @@ with col_a:
 with col_b:
     st.metric("📊 Volume (24h)", f"${volume_atual:,.2f}")
 with col_c:
-    st.metric("🔁 Volume Médio", f"${volume_medio:,.2f}")
+    st.metric("📉 Volume Médio", f"${volume_medio:,.2f}")
 
 st.divider()
+st.subheader(f"📋 Análise Técnica – {moeda_selecionada}")
 
-# Resultado técnico
-st.subheader(f"📋 Resultado da Análise Técnica – {moeda}")
 st.markdown(f"""
-- **🕒 Timeframe RSI:** `{timeframe_rsi}`
-- **📊 RSI:** `{round(rsi_valor, 2)} – {rsi_class}`
-- **📈 EMAs Semanais:**
-    - EMA 8: `${ema8:,.2f}`
-    - EMA 21: `${ema21:,.2f}`
-    - EMA 56: `${ema56:,.2f}`
-    - EMA 200: `${ema200:,.2f}`
-- **📉 Estrutura de Tendência:** `{tendencia}`
-- **📥 Volume:** `{volume_class}`
+- **Tendência (EMAs Semanais):** `{tendencia}`
+- **RSI ({timeframe_rsi}):** `{round(rsi_valor, 2)} – {rsi_class}`
+- **Volume:** `{volume_class}`
 """)
 
-# Recomendação
-st.subheader("🎯 Recomendação Final")
-st.markdown(f"""<div style='padding:10px;border:1px solid #ccc;border-radius:10px;background:#f9f9f9;font-size:18px;'>
-<b>{recomendacao}</b>
-</div>""", unsafe_allow_html=True)
+st.subheader("✅ Recomendação Final")
+st.markdown(f"### {recomendacao}")
