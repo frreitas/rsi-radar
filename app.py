@@ -11,7 +11,6 @@ Dados via CoinGecko API (candles diários).
 Intervalos intraday não disponíveis na versão gratuita e estável.  
 """)
 
-
 @st.cache_data(ttl=900)
 def get_top_coins(n=100):
     url = "https://api.coingecko.com/api/v3/coins/markets"
@@ -24,24 +23,43 @@ def get_top_coins(n=100):
     }
     r = requests.get(url, params=params)
     r.raise_for_status()
-    return pd.DataFrame(r.json())
+    df = pd.DataFrame(r.json())
+    return df
+
+def validar_id_coin(coin_id):
+    """Valida o formato do id da moeda para evitar chamadas inválidas."""
+    if not isinstance(coin_id, str):
+        return False
+    coin_id = coin_id.strip()
+    if coin_id == "":
+        return False
+    # Condições comuns para ID CoinGecko: só letras, números e hífen permitido
+    import re
+    if not re.fullmatch(r"[a-z0-9-]+", coin_id):
+        return False
+    return True
 
 @st.cache_data(ttl=900)
 def get_coin_ohlc(coin_id, days=60):
+    if not validar_id_coin(coin_id):
+        st.warning(f"ID inválido da moeda ignorado: '{coin_id}'")
+        return pd.DataFrame()
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
     params = {"vs_currency": "usd", "days": days}
-    r = requests.get(url, params=params)
-    r.raise_for_status()
-    data = r.json()
-    # data['prices']: [ [timestamp_ms, price], ... ]
-    # data['market_caps'] e data['total_volumes'] não usados aqui
-    df = pd.DataFrame(data["prices"], columns=["timestamp", "price"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-    df.set_index("timestamp", inplace=True)
-
-    # Não temos open, high, low separados. Só preço ponto a ponto.
-    # Para cálculo simples, vamos usar preço como close, sem candles OHLC.
-    return df
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        df = pd.DataFrame(data["prices"], columns=["timestamp", "price"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        df.set_index("timestamp", inplace=True)
+        return df
+    except requests.exceptions.HTTPError as e:
+        st.warning(f"Erro HTTP ao obter candles para {coin_id}: {e}")
+        return pd.DataFrame()
+    except Exception as e:
+        st.warning(f"Erro inesperado ao obter candles para {coin_id}: {e}")
+        return pd.DataFrame()
 
 def calcular_indicadores(df):
     close = df["price"]
@@ -78,25 +96,43 @@ def calcular_indicadores(df):
         "Tendência": tendencia
     }
 
-# Inputs
+# UI Inputs
 top_n = st.slider("Número de moedas a analisar (top N)", 5, 100, 20)
 filtro_rsi = st.multiselect("Filtrar por classificação RSI", ["Sobrevendida", "Neutra", "Sobrecomprada"], default=["Sobrevendida", "Neutra", "Sobrecomprada"])
-input_moeda = st.text_input("Buscar moeda por símbolo (ex: btc). Deixe vazio para top N.")
+input_moeda = st.text_input("Buscar moeda por símbolo (ex: btc). Deixe vazio para usar top N.")
 
 botao = st.button("Analisar")
 
 if botao:
     with st.spinner("Carregando dados e calculando indicadores..."):
-        df_coins = get_top_coins(top_n)
+        try:
+            df_coins = get_top_coins(top_n)
+        except Exception as e:
+            st.error(f"Erro ao obter lista de moedas: {e}")
+            st.stop()
+
         if input_moeda.strip():
             df_coins = df_coins[df_coins["symbol"].str.lower() == input_moeda.strip().lower()]
             if df_coins.empty:
                 st.warning("Moeda não encontrada.")
                 st.stop()
 
+        # Pré-validação dos IDs
+        df_coins["id_valido"] = df_coins["id"].apply(validar_id_coin)
+        df_coins_validas = df_coins[df_coins["id_valido"]]
+
+        if df_coins_validas.empty:
+            st.warning("Nenhuma moeda válida para análise após filtragem dos IDs.")
+            st.stop()
+
         resultados = []
-        for _, coin in df_coins.iterrows():
+        for _, coin in df_coins_validas.iterrows():
+            st.write(f"Analisando: {coin['id']} ({coin['symbol'].upper()})")
             df_ohlc = get_coin_ohlc(coin["id"], days=60)
+            if df_ohlc.empty:
+                st.warning(f"Sem dados suficientes para {coin['symbol'].upper()}")
+                continue
+
             indicadores = calcular_indicadores(df_ohlc)
             if indicadores is None:
                 st.warning(f"Indicadores insuficientes para {coin['symbol'].upper()}")
