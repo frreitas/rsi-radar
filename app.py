@@ -1,95 +1,83 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
-from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator
-import plotly.graph_objects as go
+from ta.trend import EMAIndicator
 
-st.set_page_config(page_title="Análise Cripto Técnica", layout="wide")
-st.title("📊 Análise Técnica de Criptomoedas com RSI, EMAs e Volume")
+# ================= CONFIGURAÇÃO DA PÁGINA =================
+st.set_page_config(page_title="Análise Técnica de Criptomoedas", layout="wide")
+st.title("📊 Análise Técnica de Criptomoedas")
+st.markdown("Forneça os dados ou utilize a API para análise automatizada de RSI, EMAs e Volume.")
 
-# ========== Funções utilitárias ==========
-
+# ================= FUNÇÕES AUXILIARES =================
 @st.cache_data(ttl=600)
-def get_crypto_data(symbol="BTC", limit=90):
+def get_crypto_data(symbol="BTC", limit=300):
     url = f"https://min-api.cryptocompare.com/data/v2/histoday?fsym={symbol}&tsym=USD&limit={limit}"
-    r = requests.get(url)
-    data = r.json()
-    if data.get("Response") != "Success":
-        return None
-    df = pd.DataFrame(data["Data"]["Data"])
-    df["time"] = pd.to_datetime(df["time"], unit="s")
-    df.set_index("time", inplace=True)
-    df["close"] = df["close"].astype(float)
-    df["volume"] = df["volumeto"]
-    return df
+    try:
+        res = requests.get(url)
+        res.raise_for_status()
+        data = res.json()["Data"]["Data"]
+        df = pd.DataFrame(data)
+        df["close"] = df["close"].astype(float)
+        df["volume"] = df["volumeto"].astype(float)
+        return df
+    except Exception as e:
+        st.error(f"Erro ao obter dados da CryptoCompare: {e}")
+        return pd.DataFrame()
 
 def classificar_rsi(rsi):
     if rsi < 30:
-        return "Sobrevendido"
+        return "🔵 Sobrevendido"
     elif rsi > 70:
-        return "Sobrecomprado"
+        return "🔴 Sobrecomprado"
     else:
-        return "Neutro"
+        return "🟡 Neutro"
 
 def classificar_ema(ema8, ema21, ema56, ema200):
     if ema8 > ema21 > ema56 > ema200:
-        return "Alta consolidada"
-    elif ema8 < ema21 < ema56 < ema200:
-        return "Baixa consolidada"
+        return "Alta Forte"
+    elif ema8 > ema21:
+        return "Alta Moderada"
+    elif ema21 > ema8:
+        return "Baixa Moderada"
     else:
-        return "Transição / Neutra"
+        return "Baixa Forte"
 
 def avaliar_volume(volume_atual, volume_medio):
-    if volume_atual > volume_medio * 1.1:
-        return "Subindo"
-    elif volume_atual < volume_medio * 0.9:
-        return "Caindo"
+    if volume_atual > volume_medio * 1.2:
+        return "✅ Volume Alto"
+    elif volume_atual < volume_medio * 0.8:
+        return "⚠️ Volume Baixo"
     else:
-        return "Estável"
+        return "🔸 Volume Normal"
 
-def gerar_recomendacao(tendencia, rsi_status, volume_status):
-    if tendencia == "Alta consolidada":
-        if rsi_status == "Sobrevendido" and volume_status == "Subindo":
-            return "✅ Compra"
-        elif rsi_status == "Neutro" and volume_status == "Subindo":
-            return "🟡 Acumular / Esperar"
-        elif rsi_status == "Sobrecomprado":
-            return "⚠️ Aguardar correção"
-    elif tendencia == "Baixa consolidada":
-        return "❌ Venda / Evitar"
+def gerar_recomendacao(tendencia, rsi_class, volume_class):
+    if "Alta" in tendencia and "Sobrevendido" in rsi_class and "Alto" in volume_class:
+        return "🟢 Sinal Forte de Compra"
+    elif "Alta" in tendencia and "Neutro" in rsi_class:
+        return "🟢 Tendência de Alta com RSI Neutro – Boa Entrada"
+    elif "Baixa" in tendencia and "Sobrecomprado" in rsi_class:
+        return "🔴 Tendência de Baixa com RSI Sobrecomprado – Evitar"
     else:
-        if rsi_status == "Sobrevendido" and volume_status == "Subindo":
-            return "⚠️ Observar possível reversão"
-        return "🟡 Esperar"
-    return "🔎 Análise inconclusiva"
+        return "🟡 Aguardar novo sinal ou reversão"
 
-@st.cache_data(ttl=1800)
-def get_fear_greed_index():
-    url = "https://api.alternative.me/fng/"
-    try:
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-        valor = int(data["data"][0]["value"])
-        classificacao = data["data"][0]["value_classification"]
-        return valor, classificacao
-    except:
-        return None, None
+# ================= INTERFACE DE SELEÇÃO =================
+opcoes_moedas = ["BTC", "ETH", "XRP", "LTC", "ADA", "SOL", "MATIC", "DOGE", "DOT", "LINK", "AVAX"]
 
-# ========== Interface ==========
+col1, col2 = st.columns([2, 1])
+with col1:
+    moeda = st.selectbox("💰 Escolha a moeda:", opcoes_moedas, index=0)
+with col2:
+    timeframe_rsi = st.selectbox("⏱️ Time Frame RSI:", ["1h", "4h", "1d", "1w", "1M"], index=2)
 
-moedas = ["BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "DOT", "SHIB", "LTC"]
-moeda = st.selectbox("💰 Selecione a moeda", moedas)
-rsi_tf = st.selectbox("⏱️ Timeframe do RSI", ["1h", "4h", "1d", "1w"])
+st.divider()
+st.subheader("📈 Análise Técnica da Moeda Selecionada")
 
-# ========== Dados da moeda ==========
-
+# ================= OBTENDO E ANALISANDO DADOS =================
 with st.spinner("🔄 Carregando dados..."):
-    df = get_crypto_data(symbol=moeda)
-    if df is None or df.empty:
-        st.error("Erro ao obter dados da moeda.")
+    df = get_crypto_data(symbol=moeda, limit=300)
+    if df.empty or len(df) < 200:
+        st.error("Erro: Dados insuficientes para análise completa (EMA 200 exige 200 candles).")
         st.stop()
 
     preco_atual = df["close"].iloc[-1]
@@ -107,65 +95,33 @@ with st.spinner("🔄 Carregando dados..."):
     tendencia = classificar_ema(ema8, ema21, ema56, ema200)
 
     volume_class = avaliar_volume(volume_atual, volume_medio)
-    rec = gerar_recomendacao(tendencia, rsi_class, volume_class)
+    recomendacao = gerar_recomendacao(tendencia, rsi_class, volume_class)
 
-# ========== Exibição dos Dados ==========
+# ================= EXIBIÇÃO DOS RESULTADOS =================
+col_a, col_b, col_c = st.columns(3)
+with col_a:
+    st.metric("💵 Preço Atual", f"${preco_atual:,.2f}", f"{variacao:.2f}%")
+with col_b:
+    st.metric("📊 Volume (24h)", f"${volume_atual:,.2f}")
+with col_c:
+    st.metric("🔄 Volume Médio", f"${volume_medio:,.2f}")
 
-st.markdown("### 💵 Dados de Mercado")
-col1, col2, col3 = st.columns(3)
-col1.metric("💰 Preço Atual (USD)", f"${preco_atual:,.2f}")
-col2.metric("📈 Variação Diária", f"{variacao:.2f}%")
-col3.metric("🔊 Volume do Dia", f"${volume_atual:,.0f}")
+st.divider()
 
-st.markdown("### 🧠 Análise Técnica")
-
+# Bloco de Análise Técnica
+st.subheader(f"📋 Resultado da Análise Técnica – {moeda}")
 with st.container():
-    st.markdown("---")
-    st.markdown(f"#### 📌 Recomendação Final: {rec}")
+    st.markdown(f"""
+    **🧭 RSI ({timeframe_rsi}):** {round(rsi, 2)} → {rsi_class}  
+    **📐 EMAs (Gráfico Semanal):**
+    - EMA 8: ${ema8:,.2f}
+    - EMA 21: ${ema21:,.2f}
+    - EMA 56: ${ema56:,.2f}
+    - EMA 200: ${ema200:,.2f}
+    - **Tendência identificada:** `{tendencia}`  
+    **📊 Volume Atual:** {volume_class}  
+    """, unsafe_allow_html=True)
 
-    col_a, col_b = st.columns(2)
-
-    with col_a:
-        st.write(f"**Moeda:** {moeda}")
-        st.write(f"**Timeframe RSI:** {rsi_tf}")
-        st.write(f"**RSI Atual:** {rsi:.2f} ({rsi_class})")
-        st.write(f"**Volume:** {volume_class}")
-
-    with col_b:
-        st.write(f"**EMA 8:** {ema8:.2f}")
-        st.write(f"**EMA 21:** {ema21:.2f}")
-        st.write(f"**EMA 56:** {ema56:.2f}")
-        st.write(f"**EMA 200:** {ema200:.2f}")
-        st.write(f"**Tendência pelas EMAs:** {tendencia}")
-
-# ========== Fear & Greed Gauge ==========
-
-st.markdown("---")
-st.subheader("📊 Sentimento de Mercado – Fear & Greed Index")
-
-fng_valor, fng_class = get_fear_greed_index()
-if fng_valor is not None:
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
-        value=fng_valor,
-        domain={"x": [0, 1], "y": [0, 1]},
-        title={"text": f"Índice de Medo e Ganância ({fng_class})"},
-        gauge={
-            "axis": {"range": [0, 100]},
-            "bar": {"color": "darkblue"},
-            "steps": [
-                {"range": [0, 25], "color": "red"},
-                {"range": [25, 50], "color": "orange"},
-                {"range": [50, 75], "color": "lightgreen"},
-                {"range": [75, 100], "color": "green"},
-            ],
-            "threshold": {
-                "line": {"color": "black", "width": 4},
-                "thickness": 0.75,
-                "value": fng_valor,
-            }
-        }
-    ))
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.warning("⚠️ Não foi possível carregar o índice de sentimento agora.")
+# Recomendação Final
+st.subheader("✅ Recomendação Final")
+st.markdown(f"### {recomendacao}")
