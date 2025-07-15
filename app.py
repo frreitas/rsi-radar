@@ -3,7 +3,6 @@ import requests
 import pandas as pd
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator
-from ta.volume import OnBalanceVolumeIndicator
 
 st.set_page_config(page_title="Análise Técnica Cripto Avançada", layout="wide")
 st.title("📊 Análise RSI + EMAs Semanais + Volume")
@@ -15,7 +14,8 @@ if "historico" not in st.session_state:
 def get_top_cryptos(limit=100):
     url = "https://min-api.cryptocompare.com/data/top/mktcapfull"
     params = {"limit": limit, "tsym": "USD"}
-    r = requests.get(url, params=params, timeout=15); r.raise_for_status()
+    r = requests.get(url, params=params, timeout=15)
+    r.raise_for_status()
     data = r.json()["Data"]
     return {f"{c['CoinInfo']['FullName']} ({c['CoinInfo']['Name']})": c["CoinInfo"]["Name"]
             for c in data if "CoinInfo" in c}
@@ -24,7 +24,8 @@ def get_top_cryptos(limit=100):
 def get_hist(symbol:str, endpoint:str, aggregate:int, limit:int=200):
     url = f"https://min-api.cryptocompare.com/data/v2/{endpoint}"
     params = {"fsym": symbol, "tsym": "USD", "aggregate": aggregate, "limit": limit}
-    r = requests.get(url, params=params, timeout=15); r.raise_for_status()
+    r = requests.get(url, params=params, timeout=15)
+    r.raise_for_status()
     df = pd.DataFrame(r.json()["Data"]["Data"])
     df["close"] = df["close"].astype(float)
     df["open"] = df["open"].astype(float)
@@ -85,7 +86,7 @@ except:
     tendencia_volume = "Indefinido"
 
 # Classificação RSI
-rsi_class = "Sobrevendida" if rsi_val<=30 else "Sobrecomprada" if rsi_val>=70 else "Neutra"
+rsi_class = "Sobrevendida" if rsi_val <= 30 else "Sobrecomprada" if rsi_val >= 70 else "Neutra"
 
 # Estrutura EMAs semanais
 if ema8 > ema21 > ema56 > ema200:
@@ -101,7 +102,8 @@ if rsi_val <= 30 and estrutura == "Alta consolidada" and tendencia_volume == "Su
 elif estrutura == "Alta consolidada" and rsi_class == "Neutra":
     rec = "🟡 Tendência de alta, RSI neutro"
 elif estrutura == "Baixa consolidada":
-    rec = "🔴 Tendência de baixa consolidada, evitar entrada"\else:
+    rec = "🔴 Tendência de baixa consolidada, evitar entrada"
+else:
     rec = "⚪ Sem confluência clara"
 
 # Resultado e exibição
@@ -114,8 +116,8 @@ res = {
     "Moeda": symbol_name, "Tipo de Trade": tipo_trade, "Timeframe RSI": timeframe,
     "RSI": rsi_val, "Classificação RSI": rsi_class, "EMA 8w": f"${ema8:,.2f}",
     "EMA 21w": f"${ema21:,.2f}", "EMA 56w": f"${ema56:,.2f}", "EMA 200w": f"${ema200:,.2f}",
-    "Volume Atual": f"{volume:,.0f}", "Volume Tendência": tendencia_volume,
-    "Estrutura Semanal": estrutura, "Recomendação": rec
+    "Volume Atual": f"{volume:,.0f}", "Tendência Volume": tendencia_volume,
+    "Estrutura EMAs Semanais": estrutura, "Recomendação": rec
 }
 
 st.subheader("📋 Resultado da Análise")
