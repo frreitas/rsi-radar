@@ -10,14 +10,14 @@ API_KEY = st.secrets["TAAPI_KEY"]
 intervalo = st.selectbox("⏱️ Intervalo", ["1h", "4h", "1d"], index=0)
 atualizar = st.button("🔄 Atualizar análise")
 
-PAIRS = ["BTC", "ETH", "XRP", "LTC", "XMR"]
+PAIRS = ["BTC/USDT", "ETH/USDT", "XRP/USDT", "LTC/USDT", "XMR/USDT"]
 
 def fetch_indicator(symbol, indicator, optInTimePeriod=None):
     url = f"https://api.taapi.io/{indicator}"
     params = {
         "secret": API_KEY,
         "exchange": "binance",
-        "symbol": f"BINANCE:{symbol}USDT",
+        "symbol": f"BINANCE:{symbol}",
         "interval": intervalo
     }
     if optInTimePeriod:
@@ -33,6 +33,15 @@ def fetch_indicator(symbol, indicator, optInTimePeriod=None):
         st.error(f"Exceção em {indicator} - {symbol}: {e}")
         return None
 
+# Mapear pares para ids do CoinGecko (sem /USDT)
+mapping_cg = {
+    "BTC/USDT": "bitcoin",
+    "ETH/USDT": "ethereum",
+    "XRP/USDT": "ripple",
+    "LTC/USDT": "litecoin",
+    "XMR/USDT": "monero"
+}
+
 def get_prices(symbols):
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {
@@ -47,14 +56,6 @@ def get_prices(symbols):
     except Exception as e:
         st.error(f"Erro ao obter preços do CoinGecko: {e}")
         return {}
-
-mapping_cg = {
-    "BTC": "bitcoin",
-    "ETH": "ethereum",
-    "XRP": "ripple",
-    "LTC": "litecoin",
-    "XMR": "monero"
-}
 
 def analisar(symbol, price_data):
     preco = price_data.get(mapping_cg[symbol], {}).get("usd")
