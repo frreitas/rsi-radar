@@ -13,16 +13,27 @@ st.markdown("Analisa as principais criptos com RSI e EMAs em tempo real via Bina
 intervalo = st.selectbox("⏱️ Intervalo de tempo", ["1h", "4h", "1d"], index=0)
 binance_interval = {"1h": "1h", "4h": "4h", "1d": "1d"}[intervalo]
 limite_velas = 100
-
-# Filtro por Top moedas
 limite_moedas = st.selectbox("🏆 Quantidade de moedas a analisar", [20, 50, 100], index=2)
 
-# Botão de atualização
 executar_analise = st.button("🔄 Atualizar agora")
 
 # ===== FUNÇÕES AUXILIARES =====
+@st.cache_data(ttl=600)
+def get_binance_symbols():
+    """Retorna lista de símbolos disponíveis na Binance"""
+    url = "https://api.binance.com/api/v3/exchangeInfo"
+    try:
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        return set([s["symbol"] for s in data["symbols"]])
+    except Exception as e:
+        st.error(f"Erro ao obter símbolos da Binance: {e}")
+        return set()
+
 @st.cache_data(ttl=300)
-def get_top_symbols(limit=100):
+def get_top_symbols_existentes_na_binance(limit=100):
+    """Retorna os top N símbolos do CoinGecko que também existem na Binance como pares USDT"""
     url = "https://api.coingecko.com/api/v3/coins/markets"
     params = {
         "vs_currency": "usd",
@@ -31,34 +42,47 @@ def get_top_symbols(limit=100):
         "page": 1
     }
     try:
-        res = requests.get(url, params=params)
+        res = requests.get(url, params=params, timeout=10)
         res.raise_for_status()
         coins = res.json()
-        symbols = []
+        binance_symbols = get_binance_symbols()
+        valid_symbols = []
+
         for coin in coins:
-            if "symbol" in coin and coin["symbol"]:
-                symbol = coin["symbol"].upper()
-                if symbol != "USDT":
-                    symbols.append(symbol + "USDT")
-        return symbols
+            symbol = coin["symbol"].upper()
+            pair = symbol + "USDT"
+            if pair in binance_symbols:
+                valid_symbols.append(pair)
+
+        return valid_symbols
     except Exception as e:
-        st.error(f"Erro ao buscar top moedas: {e}")
+        st.error(f"Erro ao buscar moedas: {e}")
         return []
 
-@st.cache_data(ttl=300)
 def get_klines(symbol, interval="1h", limit=100):
-    url = f"https://api.binance.com/api/v3/klines"
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
-    r = requests.get(url, params=params)
-    if r.status_code != 200:
+    try:
+        url = f"https://api.binance.com/api/v3/klines"
+        params = {"symbol": symbol, "interval": interval, "limit": limit}
+        r = requests.get(url, params=params, timeout=10)
+
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        if not data or len(data) < 50:
+            return None
+
+        df = pd.DataFrame(data, columns=[
+            "timestamp", "open", "high", "low", "close", "volume",
+            "close_time", "quote_asset_volume", "number_of_trades",
+            "taker_buy_base", "taker_buy_quote", "ignore"
+        ])
+        df["close"] = df["close"].astype(float)
+        return df
+
+    except Exception as e:
+        print(f"Erro em get_klines para {symbol}: {e}")
         return None
-    df = pd.DataFrame(r.json(), columns=[
-        "timestamp", "open", "high", "low", "close", "volume",
-        "close_time", "quote_asset_volume", "number_of_trades",
-        "taker_buy_base", "taker_buy_quote", "ignore"
-    ])
-    df["close"] = df["close"].astype(float)
-    return df
 
 def classificar_rsi(rsi):
     if rsi <= 30:
@@ -77,28 +101,33 @@ def classificar_tendencia(ema20, ema50):
         return "Neutra"
 
 def analisar_moeda(symbol):
-    df = get_klines(symbol, interval=binance_interval, limit=limite_velas)
-    if df is None or df.empty or len(df) < 50:
+    try:
+        df = get_klines(symbol, interval=binance_interval, limit=limite_velas)
+        if df is None or df.empty or len(df) < 50:
+            return None
+
+        rsi = RSIIndicator(close=df["close"]).rsi().iloc[-1]
+        ema20 = EMAIndicator(close=df["close"], window=20).ema_indicator().iloc[-1]
+        ema50 = EMAIndicator(close=df["close"], window=50).ema_indicator().iloc[-1]
+        preco = df["close"].iloc[-1]
+
+        return {
+            "Moeda": symbol.replace("USDT", ""),
+            "Preço (USDT)": round(preco, 4),
+            "RSI": round(rsi, 2),
+            "Classificação RSI": classificar_rsi(rsi),
+            "Tendência": classificar_tendencia(ema20, ema50),
+            "Alerta": "🔔" if rsi <= 30 and ema20 > ema50 else ""
+        }
+
+    except Exception as e:
+        print(f"Erro ao analisar {symbol}: {e}")
         return None
-
-    rsi = RSIIndicator(close=df["close"]).rsi().iloc[-1]
-    ema20 = EMAIndicator(close=df["close"], window=20).ema_indicator().iloc[-1]
-    ema50 = EMAIndicator(close=df["close"], window=50).ema_indicator().iloc[-1]
-    preco = df["close"].iloc[-1]
-
-    return {
-        "Moeda": symbol.replace("USDT", ""),
-        "Preço (USDT)": round(preco, 4),
-        "RSI": round(rsi, 2),
-        "Classificação RSI": classificar_rsi(rsi),
-        "Tendência": classificar_tendencia(ema20, ema50),
-        "Alerta": "🔔" if rsi <= 30 and ema20 > ema50 else ""
-    }
 
 # ===== EXECUÇÃO =====
 if executar_analise:
     with st.spinner("🔍 Analisando mercado..."):
-        symbols = get_top_symbols(limit=limite_moedas)
+        symbols = get_top_symbols_existentes_na_binance(limit=limite_moedas)
 
         resultados = []
         status_list = []
@@ -117,7 +146,6 @@ if executar_analise:
                 except Exception as e:
                     status_list.append({"Moeda": symbol.replace("USDT", ""), "Status": f"❌ Exceção: {str(e)}"})
 
-    # Mostrar status mesmo se não houver resultados válidos
     if status_list:
         status_df = pd.DataFrame(status_list)
         st.subheader("📦 Status da Análise das Moedas")
@@ -126,7 +154,6 @@ if executar_analise:
     if resultados:
         df = pd.DataFrame(resultados)
 
-        # Filtro por classificação RSI
         filtro_rsi = st.multiselect(
             "📌 Filtrar por classificação RSI",
             options=["Sobrevendida", "Neutra", "Sobrecomprada"],
