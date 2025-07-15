@@ -7,7 +7,18 @@ from ta.trend import EMAIndicator
 st.set_page_config(page_title="Análise Técnica de Criptomoedas", layout="wide")
 st.title("📊 Análise Técnica de Criptomoedas")
 
-# ========= Funções auxiliares =========
+# ========= Funções Auxiliares =========
+
+@st.cache_data(ttl=3600)
+def get_top_100_symbols():
+    url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
+    try:
+        res = requests.get(url)
+        res.raise_for_status()
+        data = res.json()["Data"]
+        return [coin["CoinInfo"]["Name"] for coin in data]
+    except:
+        return ["BTC", "ETH", "XRP", "LTC", "ADA"]
 
 @st.cache_data(ttl=600)
 def get_crypto_data(symbol="BTC", limit=300):
@@ -64,8 +75,9 @@ def obter_recomendacao(tendencia, rsi, volume):
 
 # ========= Interface =========
 
+st.markdown("### 🔎 Selecione a Moeda e o Time Frame para RSI")
 col1, col2 = st.columns([2, 1])
-opcoes_moedas = ["BTC", "ETH", "XRP", "LTC", "ADA", "SOL", "MATIC", "DOGE", "DOT", "LINK", "AVAX"]
+opcoes_moedas = get_top_100_symbols()
 
 with col1:
     moeda = st.selectbox("💰 Moeda:", opcoes_moedas, index=0)
@@ -106,16 +118,26 @@ with col_a:
 with col_b:
     st.metric("📊 Volume (24h)", f"${volume_atual:,.2f}")
 with col_c:
-    st.metric("🔄 Volume Médio", f"${volume_medio:,.2f}")
+    st.metric("🔁 Volume Médio", f"${volume_medio:,.2f}")
 
 st.divider()
-st.subheader(f"📋 Análise Técnica – {moeda}")
 
+# Resultado técnico
+st.subheader(f"📋 Resultado da Análise Técnica – {moeda}")
 st.markdown(f"""
-- **Tendência (EMAs Semanais):** `{tendencia}`
-- **RSI ({timeframe_rsi}):** `{round(rsi_valor, 2)} – {rsi_class}`
-- **Volume Atual vs. Médio:** `{volume_class}`
+- **🕒 Timeframe RSI:** `{timeframe_rsi}`
+- **📊 RSI:** `{round(rsi_valor, 2)} – {rsi_class}`
+- **📈 EMAs Semanais:**
+    - EMA 8: `${ema8:,.2f}`
+    - EMA 21: `${ema21:,.2f}`
+    - EMA 56: `${ema56:,.2f}`
+    - EMA 200: `${ema200:,.2f}`
+- **📉 Estrutura de Tendência:** `{tendencia}`
+- **📥 Volume:** `{volume_class}`
 """)
 
-st.subheader("✅ Recomendação Final")
-st.markdown(f"### {recomendacao}")
+# Recomendação
+st.subheader("🎯 Recomendação Final")
+st.markdown(f"""<div style='padding:10px;border:1px solid #ccc;border-radius:10px;background:#f9f9f9;font-size:18px;'>
+<b>{recomendacao}</b>
+</div>""", unsafe_allow_html=True)
