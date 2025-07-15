@@ -1,42 +1,22 @@
 import streamlit as st
 import pandas as pd
 import requests
-from concurrent.futures import ThreadPoolExecutor
 
-st.set_page_config(page_title="Radar RSI TAAPI", layout="wide")
-st.title("📊 Radar RSI & EMA com TAAPI.IO")
-st.markdown("Indicadores técnicos em tempo real com TAAPI.IO e CoinGecko para preços.")
+st.set_page_config(page_title="Radar RSI Simplificado", layout="wide")
+st.title("📊 Análise Simplificada - TAAPI.IO")
+st.markdown("Analisando pares fixos via TAAPI.IO: preço, RSI, EMA20 e EMA50")
 
 API_KEY = st.secrets["TAAPI_KEY"]
-
-# Filtros de entrada
 intervalo = st.selectbox("⏱️ Intervalo", ["1h", "4h", "1d"], index=0)
-limite_moedas = st.selectbox("🏆 Top moedas", [20, 50, 100], index=2)
-atualizar = st.button("🔄 Atualizar agora")
+atualizar = st.button("🔄 Atualizar análise")
 
-# CoinGecko – preços e variação
-def get_top_coins(limit=100):
-    url = "https://api.coingecko.com/api/v3/coins/markets"
-    params = {
-        "vs_currency": "usd",
-        "order": "market_cap_desc",
-        "per_page": limit,
-        "page": 1
-    }
-    try:
-        res = requests.get(url, params=params, timeout=10)
-        res.raise_for_status()
-        return res.json()
-    except Exception as e:
-        st.error(f"Erro ao obter moedas do CoinGecko: {e}")
-        return []
+PAIRS = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "LTCUSDT", "XMRUSDT"]
 
-# Consulta individual de indicadores (TAAPI)
 def fetch_indicator(symbol, indicator):
     url = f"https://api.taapi.io/{indicator}"
     params = {
         "secret": API_KEY,
-        "symbol": f"BINANCE:{symbol}USDT",
+        "symbol": f"BINANCE:{symbol}",
         "interval": intervalo
     }
     try:
@@ -44,20 +24,19 @@ def fetch_indicator(symbol, indicator):
         if r.status_code == 200:
             return r.json().get("value")
         else:
-            st.error(f"Erro {indicator} para {symbol}: {r.status_code} - {r.text}")
+            st.error(f"Erro {indicator} em {symbol}: {r.status_code} - {r.text}")
             return None
     except Exception as e:
         st.error(f"Exceção em {indicator} - {symbol}: {e}")
         return None
 
-# Lógica de análise
-def analisar(symbol, preco, variacao):
-    st.write(f"🔍 Analisando: {symbol}")
+def analisar(symbol):
+    preco = fetch_indicator(symbol, "close")
     rsi = fetch_indicator(symbol, "rsi")
     ema20 = fetch_indicator(symbol, "ema")
     ema50 = fetch_indicator(symbol, "ema50")
 
-    if None in (rsi, ema20, ema50):
+    if None in (preco, rsi, ema20, ema50):
         return None
 
     tendencia = "Alta" if ema20 > ema50 else "Baixa" if ema20 < ema50 else "Neutra"
@@ -65,9 +44,8 @@ def analisar(symbol, preco, variacao):
     rsi_class = "Sobrevendida" if rsi <= 30 else "Sobrecomprada" if rsi >= 70 else "Neutra"
 
     return {
-        "Moeda": symbol,
+        "Moeda": symbol.replace("USDT", ""),
         "Preço US$": round(preco, 4),
-        "Variação (%)": round(variacao or 0, 2),
         "RSI": round(rsi, 2),
         "Classificação RSI": rsi_class,
         "EMA20": round(ema20, 2),
@@ -76,52 +54,33 @@ def analisar(symbol, preco, variacao):
         "Alerta": alerta
     }
 
-# Execução principal
 if atualizar:
-    with st.spinner("⏳ Analisando mercado..."):
-        moedas = get_top_coins(limit=limite_moedas)
-        tarefas = [(m["symbol"].upper(), m["current_price"], m["price_change_percentage_24h"]) for m in moedas]
-
+    with st.spinner("⏳ Executando análise..."):
         resultados = []
-        status = []
+        for symbol in PAIRS:
+            res = analisar(symbol)
+            if res:
+                resultados.append(res)
+            else:
+                st.warning(f"Não foi possível analisar {symbol}")
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futuros = {executor.submit(analisar, *args): args[0] for args in tarefas}
-            for futuro in futuros:
-                simbolo = futuros[futuro]
-                try:
-                    resultado = futuro.result()
-                    if resultado:
-                        resultados.append(resultado)
-                        status.append({"Moeda": simbolo, "Status": "✅ Sucesso"})
-                    else:
-                        status.append({"Moeda": simbolo, "Status": "❌ Falha"})
-                except Exception as e:
-                    status.append({"Moeda": simbolo, "Status": f"❌ Erro: {e}"})
-
-    # Status
-    st.subheader("📦 Status da Análise")
-    st.dataframe(pd.DataFrame(status), use_container_width=True)
-
-    # Resultados principais
     if resultados:
         df = pd.DataFrame(resultados)
-
         filtro_rsi = st.multiselect(
-            "🎯 Filtrar por RSI",
+            "🎯 Filtrar RSI",
             options=["Sobrevendida", "Neutra", "Sobrecomprada"],
             default=["Sobrevendida", "Neutra", "Sobrecomprada"]
         )
         df_filtrado = df[df["Classificação RSI"].isin(filtro_rsi)]
 
-        st.subheader("📋 Resultados da Análise")
+        st.subheader("📋 Resultados")
         st.dataframe(df_filtrado, use_container_width=True)
 
         alertas = df_filtrado[df_filtrado["Alerta"] != ""]
         if not alertas.empty:
-            st.subheader("🚨 Alertas de Oportunidade")
+            st.subheader("🚨 Alertas")
             st.dataframe(alertas, use_container_width=True)
         else:
-            st.success("Nenhuma moeda com RSI ≤ 30 e tendência de alta.")
+            st.success("Nenhuma moeda com RSI ≤ 30 e tendência de alta no momento.")
     else:
-        st.warning("⚠️ Nenhum dado válido retornado.")
+        st.warning("Nenhum resultado válido retornado.")
