@@ -270,18 +270,25 @@ st.markdown(css, unsafe_allow_html=True)
 
 # --- Funções Auxiliares ---
 @st.cache_data(ttl=3600)
-def get_top_100_cryptos():
-    """Busca as 100 principais criptomoedas"""
+def get_top_100_cryptos_data():
+    """Busca as 100 principais criptomoedas com seus dados completos."""
     url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
     try:
         res = requests.get(url)
         res.raise_for_status()
         data = res.json()["Data"]
-        # Ordena a lista de criptomoedas alfabeticamente
-        return sorted([f"{c['CoinInfo']['FullName']} ({c['CoinInfo']['Name']})" for c in data])
+        # Retorna a lista de dicionários, já ordenada por capitalização de mercado
+        return data
     except Exception as e:
         st.error(f"Erro ao buscar lista de criptomoedas: {e}")
-        return ["Bitcoin (BTC)", "Ethereum (ETH)", "Binance Coin (BNB)"]
+        return []
+
+@st.cache_data(ttl=3600)
+def get_top_100_cryptos_names():
+    """Retorna apenas os nomes formatados das 100 principais criptomoedas."""
+    data = get_top_100_cryptos_data()
+    return sorted([f"{c['CoinInfo']['FullName']} ({c['CoinInfo']['Name']})" for c in data])
+
 
 def extrair_simbolo(moeda_str):
     """Extrai o símbolo da criptomoeda"""
@@ -375,59 +382,41 @@ def classificar_volume(v_atual, v_medio):
 
 # --- Funções de Análise e Recomendação (Aprimoradas) ---
 def obter_recomendacao_detalhada(tendencia, rsi_class, volume_class, macd_signal, preco_atual, emas):
-    """Gera recomendação com base nos indicadores, com detalhes."""
+    """Gera recomendação com base nos indicadores, com detalhes mais concisos para o card."""
     rec_principal = "Aguardar"
-    rec_detalhes = []
+    rec_detalhe_conciso = "Condições atuais não indicam um ponto claro de entrada ou saída."
 
     # Lógica de recomendação
     if tendencia == "Alta consolidada":
-        rec_detalhes.append(f"Tendência de alta consolidada (EMAs alinhadas: {emas.get('ema_8', 0.0):.2f} > {emas.get('ema_21', 0.0):.2f} > {emas.get('ema_50', 0.0):.2f} > {emas.get('ema_200', 0.0):.2f}).")
         if rsi_class == "Sobrevendido" and "Subindo" in volume_class and macd_signal == "Compra":
             rec_principal = "Compra Forte"
-            rec_detalhes.append(f"RSI ({rsi_class}) indica sobre-venda.")
-            rec_detalhes.append(f"Volume ({volume_class}) confirma interesse comprador.")
-            rec_detalhes.append(f"MACD ({macd_signal}) sinaliza cruzamento de compra.")
-            rec_detalhes.append("Excelente oportunidade de entrada em um recuo dentro da tendência de alta.")
+            rec_detalhe_conciso = "Forte tendência de alta, ativo sobrevendido com volume crescente e sinal de compra MACD. Excelente oportunidade."
         elif rsi_class == "Neutro" and "Subindo" in volume_class and macd_signal == "Compra":
             rec_principal = "Compra"
-            rec_detalhes.append(f"RSI ({rsi_class}) está neutro.")
-            rec_detalhes.append(f"Volume ({volume_class}) está favorável.")
-            rec_detalhes.append(f"MACD ({macd_signal}) sinaliza compra.")
-            rec_detalhes.append("Bom ponto de entrada para seguir a tendência de alta.")
+            rec_detalhe_conciso = "Tendência de alta confirmada, RSI neutro e sinal de compra MACD. Bom ponto de entrada."
         elif rsi_class == "Sobrecomprado":
             rec_principal = "Aguardar correção"
-            rec_detalhes.append(f"RSI ({rsi_class}) indica sobre-compra.")
-            rec_detalhes.append("Risco de correção iminente. Considere aguardar um recuo para uma entrada mais segura.")
+            rec_detalhe_conciso = "Ativo sobrecomprado em tendência de alta. Risco de correção iminente. Aguarde um recuo para nova entrada."
     elif tendencia == "Baixa consolidada":
-        rec_detalhes.append(f"Tendência de baixa consolidada (EMAs alinhadas: {emas.get('ema_8', 0.0):.2f} < {emas.get('ema_21', 0.0):.2f} < {emas.get('ema_50', 0.0):.2f} < {emas.get('ema_200', 0.0):.2f}).")
         if rsi_class == "Sobrevendido" and macd_signal == "Compra":
             rec_principal = "Observar reversão"
-            rec_detalhes.append(f"RSI ({rsi_class}) indica sobre-venda.")
-            rec_detalhes.append(f"MACD ({macd_signal}) sinaliza possível reversão.")
-            rec_detalhes.append("Monitore de perto para confirmação de um fundo e reversão de tendência.")
+            rec_detalhe_conciso = "Ativo sobrevendido em tendência de baixa, com possível sinal de reversão. Monitore de perto para confirmação."
         elif "Caindo" in volume_class or macd_signal == "Venda":
             rec_principal = "Venda / Evitar"
-            rec_detalhes.append(f"Volume ({volume_class}) está em queda ou MACD ({macd_signal}) sinaliza venda.")
-            rec_detalhes.append("Evite posições compradas ou considere vender para evitar maiores perdas.")
-    else: # Neutra/Transição ou Dados insuficientes
-        rec_principal = "Aguardar"
-        if tendencia == "Neutra/Transição":
-            rec_detalhes.append("O ativo está em fase de consolidação ou transição de tendência.")
-            rec_detalhes.append("Aguarde uma definição clara da direção do mercado.")
-        else:
-            rec_detalhes.append("Dados insuficientes para uma análise de tendência clara.")
-
-    # Detalhes adicionais para "Aguardar" genérico
-    if rec_principal == "Aguardar" and not rec_detalhes: # Se não houver detalhes específicos ainda
-        rec_detalhes.append("Condições atuais não indicam um ponto claro de entrada ou saída.")
-        rec_detalhes.append("É prudente observar o mercado e aguardar sinais mais fortes.")
+            rec_detalhe_conciso = "Tendência de baixa confirmada, volume em queda ou sinal de venda MACD. Evite posições ou considere vender."
     
-    # Formatar detalhes como lista HTML
-    detalhes_html = "<ul>" + "".join([f"<li>{d}</li>" for d in rec_detalhes]) + "</ul>"
+    # Casos para "Aguardar" mais específicos
+    if rec_principal == "Aguardar":
+        if tendencia == "Neutra/Transição":
+            rec_detalhe_conciso = "O ativo está em fase de consolidação ou transição de tendência. Aguarde uma definição clara."
+        elif rsi_class == "Neutro" and "Normal" in volume_class and macd_signal == "Venda":
+            rec_detalhe_conciso = "RSI neutro, volume normal e sinal de venda MACD. Não há clareza para compra, aguarde."
+        elif rsi_class == "Neutro" and "Normal" in volume_class and macd_signal == "Compra":
+            rec_detalhe_conciso = "RSI neutro, volume normal e sinal de compra MACD. Aguarde mais confirmações para uma entrada segura."
 
-    return rec_principal, detalhes_html
+    return rec_principal, rec_detalhe_conciso
 
-def style_recomendacao_card(text, detail_html):
+def style_recomendacao_card(text, detail_text):
     """Estiliza o card de recomendação"""
     styles = {
         "Compra Forte": ("Compra Forte", "rec-compra"),
@@ -438,7 +427,7 @@ def style_recomendacao_card(text, detail_html):
         "Aguardar": ("Aguardar", "rec-espera"),
     }
     main_text, class_name = styles.get(text, (text, "rec-espera")) # Default para "Aguardar"
-    return main_text, detail_html, class_name
+    return main_text, detail_text, class_name
 
 # --- Seção de Filtragem ---
 def mostrar_filtros():
@@ -471,23 +460,23 @@ def mostrar_filtros():
 def filtrar_moedas(filters):
     """Filtra as moedas com base nos critérios"""
     st.subheader("Resultados da Filtragem")
-    with st.spinner(f"Processando {len(get_top_100_cryptos())} moedas..."):
+    with st.spinner(f"Processando {len(get_top_100_cryptos_names())} moedas..."):
         resultados = []
         progress_bar = st.progress(0)
         
-        for i, moeda in enumerate(get_top_100_cryptos()):
+        for i, moeda in enumerate(get_top_100_cryptos_names()):
             simbolo = extrair_simbolo(moeda)
             endpoint, limit = get_timeframe_endpoint(filters['timeframe'])
             df = get_crypto_data(simbolo, endpoint, limit)
             
             if df.empty or len(df) < 50:
-                progress_bar.progress((i + 1) / len(get_top_100_cryptos()))
+                progress_bar.progress((i + 1) / len(get_top_100_cryptos_names()))
                 continue
                 
             if filters['timeframe'] == "4h":
                 df = agrupar_4h_otimizado(df)
                 if df.empty or len(df) < 50:
-                    progress_bar.progress((i + 1) / len(get_top_100_cryptos()))
+                    progress_bar.progress((i + 1) / len(get_top_100_cryptos_names()))
                     continue
                 
             # Calcular indicadores
@@ -530,7 +519,7 @@ def filtrar_moedas(filters):
                     'Data': df
                 })
             
-            progress_bar.progress((i + 1) / len(get_top_100_cryptos()))
+            progress_bar.progress((i + 1) / len(get_top_100_cryptos_names()))
         
         progress_bar.empty()
         return resultados
@@ -547,10 +536,13 @@ def dashboard_page():
 
     st.subheader("Top 10 Criptomoedas por Capitalização de Mercado")
     
-    top_cryptos_symbols = [extrair_simbolo(c) for c in get_top_100_cryptos()[:10]]
+    top_cryptos_data = get_top_100_cryptos_data()
     
     data_for_dashboard = []
-    for symbol in top_cryptos_symbols:
+    for i, crypto_info in enumerate(top_cryptos_data[:10]): # Pegar as 10 primeiras (já ordenadas por mkt cap)
+        symbol = crypto_info['CoinInfo']['Name']
+        full_name = crypto_info['CoinInfo']['FullName']
+        
         df = get_crypto_data(symbol, endpoint="histoday", limit=50) # Pegar dados diários
         if not df.empty and len(df) >= 50:
             preco = df['close'].iloc[-1]
@@ -565,7 +557,8 @@ def dashboard_page():
             else: rec_dash = "Neutro"
 
             data_for_dashboard.append({
-                "Moeda": f"{symbol}",
+                "Ranking": i + 1,
+                "Moeda": f"{full_name} ({symbol})",
                 "Preço (USD)": f"${preco:,.2f}",
                 "Variação 24h": f"{variacao:+.2f}%",
                 "RSI (14)": f"{rsi:.1f} ({rsi_class})",
@@ -642,7 +635,7 @@ def analysis_page():
     # Obter moeda e timeframe da sidebar
     moeda_selecionada = st.sidebar.selectbox(
         "Selecione a Moeda",
-        get_top_100_cryptos(),
+        get_top_100_cryptos_names(),
         key="main_coin_select_sidebar",
         help="Escolha uma criptomoeda para análise detalhada"
     )
