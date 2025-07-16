@@ -219,18 +219,11 @@ with st.spinner("Carregando dados..."):
         df_rsi_raw.index = range(len(df_rsi_raw))
         df_rsi = agrupar_4h(df_rsi_raw)
     else:
+    else:
     df_rsi = df_rsi_raw.copy()
     if not df_rsi.empty:
         df_rsi["time"] = pd.to_datetime(df_rsi["time"], unit='s')
 
-        if timeframe_rsi == "1w":
-            df_rsi = (
-                df_rsi.set_index("time")
-                .resample("W-MON")
-                .agg({"close": "last", "volume": "sum"})
-                .dropna()
-                .reset_index()
-            )
         elif timeframe_rsi == "1M":
             df_rsi = (
                 df_rsi.set_index("time")
