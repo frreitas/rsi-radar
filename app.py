@@ -124,6 +124,16 @@ h4 {
     background-image: linear-gradient(45deg, var(--primary-color), #6d28d9); /* Gradient */
     border: none;
 }
+.recommendation-card .main-text {
+    font-size: 1.2em;
+    margin-bottom: 0.5em;
+}
+.recommendation-card .sub-text {
+    font-size: 0.6em; /* Ajustado para ser menor que o main-text */
+    font-weight: 400;
+    opacity: 0.9;
+    line-height: 1.3;
+}
 .rec-compra { background-color: var(--success-color); }
 .rec-acumular { background-color: var(--warning-color); color: var(--text-dark); }
 .rec-agardar { background-color: #fd7e14; } /* Orange */
@@ -227,6 +237,12 @@ h4 {
     .recommendation-card {
         font-size: 24px;
         padding: 20px;
+    }
+    .recommendation-card .main-text {
+        font-size: 1em;
+    }
+    .recommendation-card .sub-text {
+        font-size: 0.5em;
     }
 }
 </style>
@@ -339,21 +355,39 @@ def classificar_volume(v_atual, v_medio):
 
 def obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal):
     """Gera recomendação com base nos indicadores"""
+    rec_principal = "Aguardar"
+    rec_detalhe = "Condições atuais não indicam um ponto claro de entrada ou saída. Observe o mercado."
+
     if tendencia == "Alta consolidada":
         if rsi_class == "Sobrevendido" and "Subindo" in volume_class and macd_signal == "Compra":
-            return "Compra Forte"
+            rec_principal = "Compra Forte"
+            rec_detalhe = "Forte tendência de alta, ativo sobrevendido com volume crescente e sinal de compra MACD. Excelente oportunidade."
         elif rsi_class == "Neutro" and "Subindo" in volume_class and macd_signal == "Compra":
-            return "Compra"
+            rec_principal = "Compra"
+            rec_detalhe = "Tendência de alta confirmada, RSI neutro e sinal de compra MACD. Bom ponto de entrada."
         elif rsi_class == "Sobrecomprado":
-            return "Aguardar correção"
+            rec_principal = "Aguardar correção"
+            rec_detalhe = "Ativo sobrecomprado em tendência de alta. Risco de correção iminente. Aguarde um recuo para nova entrada."
     elif tendencia == "Baixa consolidada":
         if rsi_class == "Sobrevendido" and macd_signal == "Compra":
-            return "Observar reversão"
+            rec_principal = "Observar reversão"
+            rec_detalhe = "Ativo sobrevendido em tendência de baixa, com possível sinal de reversão. Monitore de perto para confirmação."
         elif "Caindo" in volume_class or macd_signal == "Venda":
-            return "Venda / Evitar"
-    return "Aguardar"
+            rec_principal = "Venda / Evitar"
+            rec_detalhe = "Tendência de baixa confirmada, volume em queda ou sinal de venda MACD. Evite posições ou considere vender."
+    
+    # Casos para "Aguardar" mais específicos
+    if rec_principal == "Aguardar":
+        if tendencia == "Neutra/Transição":
+            rec_detalhe = "O ativo está em fase de consolidação ou transição de tendência. Aguarde uma definição clara."
+        elif rsi_class == "Neutro" and "Normal" in volume_class and macd_signal == "Venda":
+            rec_detalhe = "RSI neutro, volume normal e sinal de venda MACD. Não há clareza para compra, aguarde."
+        elif rsi_class == "Neutro" and "Normal" in volume_class and macd_signal == "Compra":
+            rec_detalhe = "RSI neutro, volume normal e sinal de compra MACD. Aguarde mais confirmações para uma entrada segura."
 
-def style_recomendacao_card(text):
+    return rec_principal, rec_detalhe
+
+def style_recomendacao_card(text, detail_text):
     """Estiliza o card de recomendação"""
     styles = {
         "Compra Forte": ("Compra Forte", "rec-compra"),
@@ -363,7 +397,8 @@ def style_recomendacao_card(text):
         "Observar reversão": ("Observar reversão", "rec-observar"),
         "Aguardar": ("Aguardar", "rec-espera"),
     }
-    return styles.get(text, (text, "rec-espera")) # Default para "Aguardar"
+    main_text, class_name = styles.get(text, (text, "rec-espera")) # Default para "Aguardar"
+    return main_text, detail_text, class_name
 
 # --- Seção de Filtragem (Ajustada) ---
 def mostrar_filtros():
@@ -560,8 +595,10 @@ def main():
         
         tendencia = classificar_tendencia(emas.get("ema_8"), emas.get("ema_21"), emas.get("ema_50"), emas.get("ema_200"))
         volume_class = classificar_volume(volume_atual, volume_medio)
-        recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal)
-        texto_card, classe_card = style_recomendacao_card(recomendacao)
+        
+        # Obter recomendação e detalhe
+        rec_principal, rec_detalhe = obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal)
+        texto_card, texto_detalhe_card, classe_card = style_recomendacao_card(rec_principal, rec_detalhe)
 
     # Exibição dos resultados principais
     col1, col2, col3 = st.columns(3)
@@ -573,7 +610,8 @@ def main():
 
     st.markdown(f"""
     <div class="recommendation-card {classe_card}">
-        {texto_card}
+        <div class="main-text">{texto_card}</div>
+        <div class="sub-text">{texto_detalhe_card}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -581,6 +619,7 @@ def main():
     with st.expander("🔍 Detalhes da Análise", expanded=True):
         # Usando st.container para envolver os detalhes da análise
         with st.container(border=True):
+            # Cada item de detalhe é um bloco de markdown separado para garantir renderização correta
             st.markdown(f"""
             <div class="analysis-details-item">
                 <h4>Tendência</h4>
@@ -588,14 +627,18 @@ def main():
                 <p>EMA (8): <strong>${emas.get('ema_8', 0.0):,.2f}</strong> | EMA (21): <strong>${emas.get('ema_21', 0.0):,.2f}</strong></p>
                 <p>EMA (50): <strong>${emas.get('ema_50', 0.0):,.2f}</strong> | EMA (200): <strong>${emas.get('ema_200', 0.0):,.2f}</strong></p>
             </div>
+            """, unsafe_allow_html=True)
             
+            st.markdown(f"""
             <div class="analysis-details-item">
                 <h4>Momentum</h4>
                 <p>RSI: <strong>{rsi:.1f}</strong> ({rsi_class})</p>
                 <p>MACD: <strong>{macd_line:,.2f}</strong> | Sinal: <strong>{macd_signal_line:,.2f}</strong></p>
                 <p>Histograma: <strong>{macd_diff:,.2f}</strong> | Sinal: <strong>{macd_signal}</strong></p>
             </div>
+            """, unsafe_allow_html=True)
             
+            st.markdown(f"""
             <div class="analysis-details-item">
                 <h4>Volume</h4>
                 <p>Atual: <strong>${volume_atual:,.0f}</strong></p>
