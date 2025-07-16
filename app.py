@@ -314,8 +314,7 @@ if fng is not None:
     """, unsafe_allow_html=True)
 else:
     st.info("Não foi possível carregar o Índice de Medo e Ganância.")
-    # --- Análise por Filtros ---
-st.markdown("## 🔎 Análise por Filtros")
+    st.markdown("## 🔎 Análise por Filtros")
 
 col_rsi, col_tendencia = st.columns(2)
 with col_rsi:
@@ -329,8 +328,8 @@ with col_tendencia:
 resultados = []
 moedas_data = get_top_100_cryptos()
 for moeda in moedas_data:
-    nome = moeda.split(" (")[0]
-    simbolo = extrair_simbolo(moeda)
+    nome = moeda["CoinInfo"]["FullName"]
+    simbolo = moeda["CoinInfo"]["Name"]
 
     df = get_crypto_data(simbolo, "histoday", 400)
     if df.empty or len(df) < 60:
@@ -348,23 +347,14 @@ for moeda in moedas_data:
     if len(df_semanal) < 60:
         continue
 
-    ema8_obj = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator()
-    ema21_obj = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator()
-    ema56_obj = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator()
-    ema200_obj = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator()
-
-    if len(ema8_obj) < 2 or len(ema21_obj) < 2 or len(ema56_obj) < 2 or len(ema200_obj) < 2:
-        continue
-
-    ema8 = ema8_obj.iloc[-1]
-    ema21 = ema21_obj.iloc[-1]
-    ema56 = ema56_obj.iloc[-1]
-    ema200 = ema200_obj.iloc[-1]
-
-    ema8_ant = ema8_obj.iloc[-2]
-    ema21_ant = ema21_obj.iloc[-2]
-    ema56_ant = ema56_obj.iloc[-2]
-    ema200_ant = ema200_obj.iloc[-2]
+    ema8 = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator().iloc[-1]
+    ema21 = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-1]
+    ema56 = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-1]
+    ema200 = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator().iloc[-1]
+    ema8_ant = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator().iloc[-2]
+    ema21_ant = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-2]
+    ema56_ant = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-2]
+    ema200_ant = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator().iloc[-2]
 
     volume_atual = df["volume"].iloc[-1]
     volume_medio = df["volume"].mean()
@@ -375,7 +365,6 @@ for moeda in moedas_data:
         ema8_ant, ema21_ant, ema56_ant, ema200_ant,
         preco_atual
     )
-
     recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class)
 
     if (not rsi_filtro or rsi_class in rsi_filtro) and (not tendencia_filtro or tendencia in tendencia_filtro):
@@ -392,4 +381,3 @@ if resultados:
     st.dataframe(pd.DataFrame(resultados).sort_values(by="Variação (%)", ascending=False))
 else:
     st.warning("Nenhuma moeda corresponde aos filtros selecionados.")
-
