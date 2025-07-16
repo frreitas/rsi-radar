@@ -329,8 +329,8 @@ with col_tendencia:
 resultados = []
 moedas_data = get_top_100_cryptos()
 for moeda in moedas_data:
-    nome = moeda["CoinInfo"]["FullName"]
-    simbolo = moeda["CoinInfo"]["Name"]
+    nome = moeda.split(" (")[0]
+    simbolo = extrair_simbolo(moeda)
 
     df = get_crypto_data(simbolo, "histoday", 400)
     if df.empty or len(df) < 60:
@@ -348,21 +348,26 @@ for moeda in moedas_data:
     if len(df_semanal) < 60:
         continue
 
-    ema8 = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator().iloc[-1]
-    ema21 = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-1]
-    ema56 = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-1]
-    ema200 = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator().iloc[-1]
-    ema8_ant = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator().iloc[-2]
-    ema21_ant = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-2]
-    ema56_ant = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-2]
-    ema200_ant = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator().iloc[-2]
+    ema8 = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator()
+    ema21 = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator()
+    ema56 = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator()
+    ema200 = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator()
+
+    # Verificar tamanho para evitar erro
+    if len(ema8) < 2 or len(ema21) < 2 or len(ema56) < 2 or len(ema200) < 2:
+        continue
+
+    ema8_atual, ema8_ant = ema8.iloc[-1], ema8.iloc[-2]
+    ema21_atual, ema21_ant = ema21.iloc[-1], ema21.iloc[-2]
+    ema56_atual, ema56_ant = ema56.iloc[-1], ema56.iloc[-2]
+    ema200_atual, ema200_ant = ema200.iloc[-1], ema200.iloc[-2]
 
     volume_atual = df["volume"].iloc[-1]
     volume_medio = df["volume"].mean()
     volume_class = classificar_volume(volume_atual, volume_medio)
 
     tendencia = classificar_tendencia(
-        ema8, ema21, ema56, ema200,
+        ema8_atual, ema21_atual, ema56_atual, ema200_atual,
         ema8_ant, ema21_ant, ema56_ant, ema200_ant,
         preco_atual
     )
