@@ -170,27 +170,55 @@ def obter_recomendacao(tendencia, rsi, volume):
             return "Acumular / Espera"
         elif rsi == "Sobrecomprado":
             return "Aguardar correção"
+        else:
+            return "Manter posição e monitorar"
+
     elif tendencia == "Baixa consolidada":
         if rsi == "Sobrevendido" and volume == "Subindo":
             return "Observar reversão potencial com stop curto"
         elif volume == "Caindo":
             return "Venda / Evitar"
         elif rsi == "Neutro" and volume == "Subindo":
-            return "Observar cautelosamente"
-    elif tendencia == "Neutra/Transição":
-        if rsi == "Sobrevendido":
-            return "Observar"
+            return "Observar com cautela"
+        else:
+            return "Fora do ativo"
+
+    elif tendencia == "Zona de Suporte":
+        if rsi == "Sobrevendido" and volume == "Subindo":
+            return "Entrada tática com stop abaixo do suporte"
         elif rsi == "Neutro":
-            return "Espera"
+            return "Observar reação no suporte"
+        else:
+            return "Aguardar confirmação de suporte"
+
+    elif tendencia == "Zona de Resistência":
+        if rsi == "Sobrecomprado" and volume == "Caindo":
+            return "Possível topo - avaliar venda parcial"
+        elif rsi == "Neutro" and volume == "Caindo":
+            return "Evitar entrada próximo à resistência"
+        elif volume == "Subindo":
+            return "Observar possível rompimento com cautela"
+        else:
+            return "Zona arriscada - aguardar definição"
+
+    elif tendencia == "Transição / Neutra":
+        if rsi == "Sobrevendido":
+            return "Observar para possível entrada em reversão"
+        elif rsi == "Neutro":
+            return "Esperar definição de tendência"
         elif rsi == "Sobrecomprado":
-            return "Venda parcial para quem já está comprado; observar topo para quem não está dentro"
+            return "Venda parcial / Observar possível topo"
+        else:
+            return "Sem ação definida - aguardar"
+
     return "Aguardar"
+
 
 def style_recomendacao_card(text):
     estilos = {
         "Compra": ("Compra Forte", "rec-compra"),
         "Acumular / Espera": ("Atenção", "rec-acumular"),
-        "Aguardar correção": ("Aguardar", "rec-agardar"),
+        "Aguardar correção": ("Aguardar", "rec-aguardar"),
         "Venda / Evitar": ("Venda Forte", "rec-venda"),
         "Observar": ("Observar", "rec-observar"),
         "Espera": ("Espera", "rec-espera"),
