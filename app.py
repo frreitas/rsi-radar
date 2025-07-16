@@ -489,24 +489,59 @@ if fng_valor is not None:
 
 else:
     st.info("Não foi possível obter o índice de Medo e Ganância no momento. Verifique sua conexão ou tente novamente mais tarde.")
+       # --- Adicionando a seção de filtragem ---
+
+st.subheader("🔍 Filtragem de Moedas")
+
+# Campos de seleção para filtragem
+with st.expander("Filtrar Moedas por Indicadores"):
+    # Seleção de tendência
+    tendencia_opcoes = st.multiselect("Selecione a Tendência", ["Alta consolidada", "Baixa consolidada", "Neutra/Transição"], help="Escolha a tendência desejada.")
+    
+    # Seleção de RSI
+    rsi_opcoes = st.multiselect("Selecione o Estado do RSI", ["Sobrevendido", "Sobrecomprado", "Neutro"], help="Escolha o estado do RSI desejado.")
+    
+    # Seleção de Volume
+    volume_opcoes = st.multiselect("Selecione o Estado do Volume", ["Subindo", "Caindo"], help="Escolha o estado do volume desejado.")
+
+# Botão para aplicar filtros
+if st.button("Aplicar Filtros"):
+    # Lista para armazenar as moedas que atendem aos critérios
+    moedas_filtradas = []
+
+    # Obter a lista de criptomoedas
+    top_moedas = get_top_100_cryptos()
+
+    for moeda in top_moedas:
+        simbolo = extrair_simbolo(moeda)
+        # Obter dados da moeda
+        df_analise_raw = get_crypto_data(simbolo, "histoday", 200)
+
+        if df_analise_raw.empty:
+            continue
+
         # Calcular indicadores
         rsi_valor = ta_momentum.RSIIndicator(close=df_analise_raw["close"], window=14).rsi().iloc[-1]
         rsi_class = classificar_rsi(rsi_valor)
+
         # Calcular EMAs
         ema_fast = ta_trend.EMAIndicator(close=df_analise_raw["close"], window=ema_fast_period).ema_indicator().iloc[-1]
         ema_medium = ta_trend.EMAIndicator(close=df_analise_raw["close"], window=ema_medium_period).ema_indicator().iloc[-1]
         ema_slow = ta_trend.EMAIndicator(close=df_analise_raw["close"], window=ema_slow_period).ema_indicator().iloc[-1]
         ema_long = ta_trend.EMAIndicator(close=df_analise_raw["close"], window=ema_long_period).ema_indicator().iloc[-1]
         tendencia = classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long)
+
         # Calcular volume
         volume_atual = df_analise_raw["volume"].iloc[-1]
         volume_medio = df_analise_raw["volume"].mean()
         volume_class = classificar_volume(volume_atual, volume_medio)
+
         # Verificar se a moeda atende aos critérios de filtragem
         if (not tendencia_opcoes or tendencia in tendencia_opcoes) and \
            (not rsi_opcoes or rsi_class in rsi_opcoes) and \
            (not volume_opcoes or volume_class in volume_opcoes):
             moedas_filtradas.append(moeda)
+
     # Exibir resultados
     if moedas_filtradas:
         st.success(f"Moedas que atendem aos critérios: {', '.join(moedas_filtradas)}")
