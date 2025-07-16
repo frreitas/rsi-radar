@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 import requests
+
 # Importar os módulos completos e depois acessar as classes
 import ta.momentum as ta_momentum
 import ta.trend as ta_trend
+
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
@@ -175,6 +177,8 @@ def classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long):
     Classifica a tendência com base na ordem das EMAs.
     Considera 4 EMAs para uma análise mais robusta.
     """
+    if ema_fast is None or ema_medium is None or ema_slow is None or ema_long is None:
+        return "Dados insuficientes para EMAs"
     if ema_fast > ema_medium > ema_slow > ema_long:
         return "Alta consolidada"
     elif ema_fast < ema_medium < ema_slow < ema_long:
@@ -185,10 +189,9 @@ def classificar_volume(v_atual, v_medio):
     """Compara o volume atual com o volume médio."""
     return "Subindo" if v_atual >= v_medio else "Caindo"
 
-def obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal, bb_signal):
+def obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal):
     """
     Gera uma recomendação de negociação com base em múltiplos indicadores.
-    Adicionado MACD e Bandas de Bollinger na lógica.
     """
     # Inicializa a recomendação padrão
     recomendacao = "Aguardar"
@@ -201,10 +204,6 @@ def obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal, bb_signa
             recomendacao = "Acumular / Espera"
         elif rsi_class == "Sobrecomprado" and volume_class == "Subindo":
             recomendacao = "Aguardar correção"
-        elif bb_signal == "Preço abaixo da banda inferior":
-            recomendacao = "Observar reversão potencial (compra de risco)"
-        elif bb_signal == "Preço acima da banda superior":
-            recomendacao = "Aguardar correção (venda de risco)"
 
     elif tendencia == "Baixa consolidada":
         if rsi_class == "Sobrevendido" and volume_class == "Subindo" and macd_signal == "Compra":
@@ -213,8 +212,6 @@ def obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal, bb_signa
             recomendacao = "Venda / Evitar"
         elif rsi_class == "Neutro" and volume_class == "Subindo":
             recomendacao = "Observar cautelosamente"
-        elif bb_signal == "Preço acima da banda superior":
-            recomendacao = "Venda (oportunidade de short)"
 
     elif tendencia == "Neutra/Transição":
         if rsi_class == "Sobrevendido" and volume_class == "Subindo" and macd_signal == "Compra":
@@ -226,21 +223,13 @@ def obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal, bb_signa
                 recomendacao = "Venda parcial para quem já está comprado; observar topo para quem não está dentro"
             else:
                 recomendacao = "Esperar topo confirmado"
-        elif bb_signal == "Preço abaixo da banda inferior":
-            recomendacao = "Observar (potencial compra em fundo)"
-        elif bb_signal == "Preço acima da banda superior":
-            recomendacao = "Observar (potencial venda em topo)"
 
-    # Ajustes finos com base em MACD e BB se a recomendação ainda for "Aguardar" ou genérica
+    # Ajustes finos com base em MACD se a recomendação ainda for "Aguardar" ou genérica
     if recomendacao == "Aguardar":
         if macd_signal == "Compra":
             recomendacao = "Aguardar confirmação (MACD compra)"
         elif macd_signal == "Venda":
             recomendacao = "Aguardar confirmação (MACD venda)"
-        elif bb_signal == "Preço abaixo da banda inferior":
-            recomendacao = "Aguardar (preço em zona de compra BB)"
-        elif bb_signal == "Preço acima da banda superior":
-            recomendacao = "Aguardar (preço em zona de venda BB)"
 
     return recomendacao
 
@@ -258,13 +247,8 @@ def style_recomendacao_card(text):
         "Observar cautelosamente": ("Observar Cautelosamente", "rec-observar"),
         "Esperar topo confirmado": ("Esperar Topo Confirmado", "rec-espera"),
         "Aguardar": ("Aguardar", "rec-default"),
-        "Observar reversão potencial (compra de risco)": ("Compra de Risco", "rec-acumular"),
-        "Aguardar correção (venda de risco)": ("Venda de Risco", "rec-agardar"),
-        "Venda (oportunidade de short)": ("Venda Forte", "rec-venda"),
         "Aguardar confirmação (MACD compra)": ("Aguardar Compra", "rec-acumular"),
         "Aguardar confirmação (MACD venda)": ("Aguardar Venda", "rec-agardar"),
-        "Aguardar (preço em zona de compra BB)": ("Aguardar Compra BB", "rec-acumular"),
-        "Aguardar (preço em zona de venda BB)": ("Aguardar Venda BB", "rec-agardar"),
     }
     return styles.get(text, ("Desconhecido", "rec-default"))
 
@@ -317,7 +301,22 @@ with st.spinner("Carregando dados e calculando indicadores..."):
 
     if df_analise.empty or len(df_analise) < max(ema_long_period, 200): # Garantir dados suficientes para EMAs longas
         st.warning(f"Dados insuficientes para o timeframe '{timeframe_analise}' ou para calcular todas as EMAs. Tente um timeframe maior ou outra moeda.")
-        st.stop()
+        # Definir valores padrão para evitar erros se os dados forem insuficientes
+        preco_atual = df_analise["close"].iloc[-1] if not df_analise.empty else 0.0
+        preco_anterior = df_analise["close"].iloc[-2] if len(df_analise) > 1 else preco_atual
+        variacao_periodo = (preco_atual - preco_anterior) / preco_anterior * 100 if preco_anterior != 0 else 0.0
+        volume_atual = df_analise["volume"].iloc[-1] if not df_analise.empty else 0.0
+        volume_medio = df_analise["volume"].mean() if not df_analise.empty else 0.0
+        rsi_valor = 50.0
+        rsi_class = "Neutro"
+        macd_line, macd_signal_line, macd_diff = 0.0, 0.0, 0.0
+        macd_signal = "Neutro"
+        ema_fast, ema_medium, ema_slow, ema_long = None, None, None, None
+        tendencia = "Dados insuficientes para EMAs"
+        volume_class = "Neutro"
+        recomendacao = "Aguardar"
+        texto_card, classe_card = style_recomendacao_card(recomendacao)
+        st.stop() # Parar a execução para evitar erros posteriores
 
     # --- Cálculo de Indicadores ---
 
@@ -350,21 +349,11 @@ with st.spinner("Carregando dados e calculando indicadores..."):
     elif macd_line < macd_signal_line and macd_diff < 0:
         macd_signal = "Venda"
 
-    # Bandas de Bollinger no timeframe selecionado
-    bb_indicator = ta_trend.BollingerBands(close=df_analise["close"]) # Usando ta_trend.BollingerBands
-    bb_upper = bb_indicator.bollinger_hband().iloc[-1]
-    bb_lower = bb_indicator.bollinger_lband().iloc[-1]
-    bb_signal = "Neutro"
-    if preco_atual > bb_upper:
-        bb_signal = "Preço acima da banda superior"
-    elif preco_atual < bb_lower:
-        bb_signal = "Preço abaixo da banda inferior"
-
     # EMAs no timeframe de análise (usando os períodos configurados pelo usuário)
     # Garantir que há dados suficientes para o cálculo da EMA mais longa
     if len(df_analise) < ema_long_period:
         st.warning(f"Dados insuficientes para calcular EMA de {ema_long_period} períodos. A análise de tendência pode não ser precisa.")
-        ema_fast, ema_medium, ema_slow, ema_long = [None]*4
+        ema_fast, ema_medium, ema_slow, ema_long = None, None, None, None
         tendencia = "Dados insuficientes para EMAs"
     else:
         ema_fast = ta_trend.EMAIndicator(close=df_analise["close"], window=ema_fast_period).ema_indicator().iloc[-1] # Usando ta_trend.EMAIndicator
@@ -374,7 +363,7 @@ with st.spinner("Carregando dados e calculando indicadores..."):
         tendencia = classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long)
 
     volume_class = classificar_volume(volume_atual, volume_medio)
-    recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal, bb_signal)
+    recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal)
     texto_card, classe_card = style_recomendacao_card(recomendacao)
 
 # --- Exibição de Métricas e Análise ---
@@ -392,7 +381,6 @@ with st.container():
         <h4 style="color:#334155;">Tendência (EMAs {ema_fast_period}/{ema_medium_period}/{ema_slow_period}/{ema_long_period} {timeframe_analise}): <strong>{tendencia}</strong></h4>
         <h4 style="color:#334155;">RSI ({timeframe_analise}): <strong>{rsi_valor:.2f} – {rsi_class}</strong></h4>
         <h4 style="color:#334155;">MACD ({timeframe_analise}): <strong>Linha: {macd_line:.2f}, Sinal: {macd_signal_line:.2f}, Histograma: {macd_diff:.2f} – {macd_signal}</strong></h4>
-        <h4 style="color:#334155;">Bandas de Bollinger ({timeframe_analise}): <strong>Superior: {bb_upper:.2f}, Inferior: {bb_lower:.2f} – {bb_signal}</strong></h4>
         <h4 style="color:#334155;">Volume Atual vs. Médio: <strong>{volume_class}</strong></h4>
     </div>
     """, unsafe_allow_html=True)
@@ -428,11 +416,6 @@ if not df_analise.empty and len(df_analise) > 1:
         fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.EMAIndicator(close=df_analise["close"], window=ema_long_period).ema_indicator(),
                                    mode='lines', name=f'EMA {ema_long_period}', line=dict(color='blue', width=1)))
 
-    # Adicionar Bandas de Bollinger ao gráfico principal
-    fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.BollingerBands(close=df_analise["close"]).bollinger_hband(),
-                                   mode='lines', name='BB Superior', line=dict(color='gray', width=1, dash='dash')))
-    fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.BollingerBands(close=df_analise["close"]).bollinger_lband(),
-                                   mode='lines', name='BB Inferior', line=dict(color='gray', width=1, dash='dash')))
 
     fig_chart.update_layout(
         xaxis_rangeslider_visible=False,
@@ -442,7 +425,10 @@ if not df_analise.empty and len(df_analise) > 1:
     )
 
     # Criar subplots para RSI e MACD
-    fig_subplots = go.Figure()
+    from plotly.subplots import make_subplots
+    fig_subplots = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                                 vertical_spacing=0.1,
+                                 row_heights=[0.5, 0.5])
 
     # Subplot RSI
     fig_subplots.add_trace(go.Scatter(x=df_analise.index, y=ta_momentum.RSIIndicator(close=df_analise["close"], window=14).rsi(),
@@ -465,7 +451,6 @@ if not df_analise.empty and len(df_analise) > 1:
         height=400,
         showlegend=True,
         margin=dict(l=20, r=20, t=20, b=20),
-        grid=dict(rows=2, columns=1, pattern="independent", row_heights=[0.5, 0.5])
     )
 
     st.plotly_chart(fig_chart, use_container_width=True)
