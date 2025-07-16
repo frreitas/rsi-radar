@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Análise Técnica de Criptomoedas", layout="wide")
 
-# --- Estilo CSS para visual limpo e profissional ---
+# --- Estilo CSS ---
 st.markdown("""
 <style>
 .main .block-container { max-width: 1100px; padding: 1rem 2rem; }
@@ -40,7 +40,6 @@ h1 { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-weight: 
 st.title("📊 Análise Técnica de Criptomoedas")
 
 # --- Funções auxiliares ---
-
 @st.cache_data(ttl=3600)
 def get_top_100_cryptos():
     url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
@@ -81,7 +80,6 @@ def get_crypto_data(symbol, endpoint="histoday", limit=200):
 
 def agrupar_4h(df):
     df = df.copy()
-    df["time"] = pd.to_datetime(df["time"])
     df.set_index("time", inplace=True)
     df = df.resample("4H").agg({
         "close": "last",
@@ -172,13 +170,23 @@ st.subheader("📈 Análise Técnica")
 with st.spinner("Carregando dados..."):
     endpoint, limite = get_timeframe_endpoint(timeframe)
     df = get_crypto_data(simbolo, endpoint, limite)
-
     if df.empty:
         st.error("Erro ao carregar dados.")
         st.stop()
 
     if timeframe == "4h":
         df = agrupar_4h(df)
+
+    elif timeframe == "1M":
+        df = df.copy()
+        df.set_index("time", inplace=True)
+        df = df.resample("M").agg({
+            "close": "last",
+            "volume": "sum",
+            "open": "first",
+            "high": "max",
+            "low": "min"
+        }).dropna().reset_index()
 
     rsi_valor = RSIIndicator(close=df["close"], window=14).rsi().iloc[-1]
     rsi_class = classificar_rsi(rsi_valor)
@@ -205,7 +213,7 @@ with st.spinner("Carregando dados..."):
     preco_ontem = df_diario["close"].iloc[-2]
     variacao = (preco_atual - preco_ontem) / preco_ontem * 100
 
-# --- Exibição de Métricas ---
+# --- Exibição ---
 colA, colB, colC = st.columns(3)
 colA.metric("💵 Preço Atual (USD)", f"${preco_atual:,.2f}", f"{variacao:.2f}%")
 colB.metric("📊 Volume (24h)", f"${volume_atual:,.2f}")
@@ -213,7 +221,6 @@ colC.metric("📉 Volume Médio", f"${volume_medio:,.2f}")
 
 st.divider()
 
-# --- Análise Técnica ---
 st.markdown(f"""
 <div class="analysis-container">
     <h4 style="color:#334155;">Tendência (EMAs Semanais): <strong>{tendencia}</strong></h4>
@@ -228,7 +235,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- Fear & Greed Index ---
+# --- Índice de Medo e Ganância ---
 fng = get_fear_greed_index()
 if fng is not None:
     fig = go.Figure(go.Indicator(
