@@ -132,7 +132,7 @@ h4 {
 .rec-espera { background-color: #6c757d; } /* Gray */
 .rec-vendaparcial { background-color: #6f42c1; } /* Purple */
 
-/* Detalhes da Análise (Correção de Formatação) */
+/* Detalhes da Análise (Corrigida e Profissional) */
 .analysis-details-section {
     background: var(--bg-card);
     padding: 20px 25px;
@@ -369,19 +369,21 @@ def style_recomendacao_card(text):
 def mostrar_filtros():
     """Exibe os controles de filtragem"""
     with st.expander("🔍 FILTRAR MOEDAS POR INDICADORES", expanded=False): # Começa fechado
-        st.markdown('<div class="selection-section"><div class="filter-grid">', unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2) # Reduzido para 2 colunas
-        
-        with col1:
-            timeframe_filter = st.selectbox("Timeframe", ["1h", "4h", "1d", "1w"], index=2, key="filter_timeframe_main")
-            trend_filter = st.multiselect("Tendência", ["Alta consolidada", "Baixa consolidada", "Neutra/Transição"], key="filter_trend_main")
+        # Usando st.container para agrupar os elementos do filtro
+        with st.container():
+            st.markdown('<div class="filter-grid">', unsafe_allow_html=True)
             
-        with col2:
-            rsi_filter = st.multiselect("RSI", ["Sobrevendido", "Neutro", "Sobrecomprado"], key="filter_rsi_main")
-            volume_filter = st.multiselect("Volume", ["Subindo (Alto)", "Normal", "Caindo (Baixo)"], key="filter_volume_main")
-        
-        st.markdown('</div></div>', unsafe_allow_html=True)
+            col1, col2 = st.columns(2) # Reduzido para 2 colunas
+            
+            with col1:
+                timeframe_filter = st.selectbox("Timeframe", ["1h", "4h", "1d", "1w"], index=2, key="filter_timeframe_main")
+                trend_filter = st.multiselect("Tendência", ["Alta consolidada", "Baixa consolidada", "Neutra/Transição"], key="filter_trend_main")
+                
+            with col2:
+                rsi_filter = st.multiselect("RSI", ["Sobrevendido", "Neutro", "Sobrecomprado"], key="filter_rsi_main")
+                volume_filter = st.multiselect("Volume", ["Subindo (Alto)", "Normal", "Caindo (Baixo)"], key="filter_volume_main")
+            
+            st.markdown('</div>', unsafe_allow_html=True) # Fecha a div filter-grid
         
         if st.button("🔎 APLICAR FILTROS", type="primary", use_container_width=True, key="apply_filters_button"):
             return {
@@ -497,26 +499,27 @@ def main():
     st.subheader("📈 Análise Individual")
     
     # Seção de seleção de moeda e timeframe para análise individual
-    st.markdown('<div class="selection-section">', unsafe_allow_html=True)
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        moeda_selecionada = st.selectbox(
-            "Selecione a Moeda",
-            get_top_100_cryptos(),
-            key="main_coin_select",
-            help="Escolha uma criptomoeda para análise detalhada"
-        )
-        simbolo = extrair_simbolo(moeda_selecionada)
-    
-    with col2:
-        timeframe_analise = st.selectbox(
-            "Timeframe Análise",
-            ["1h", "4h", "1d", "1w"],
-            index=2,
-            key="main_timeframe"
-        )
-    st.markdown('</div>', unsafe_allow_html=True) # Fecha a div selection-section
+    with st.container(): # Usando st.container para a seção de seleção
+        st.markdown('<div class="selection-section">', unsafe_allow_html=True)
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            moeda_selecionada = st.selectbox(
+                "Selecione a Moeda",
+                get_top_100_cryptos(),
+                key="main_coin_select",
+                help="Escolha uma criptomoeda para análise detalhada"
+            )
+            simbolo = extrair_simbolo(moeda_selecionada)
+        
+        with col2:
+            timeframe_analise = st.selectbox(
+                "Timeframe Análise",
+                ["1h", "4h", "1d", "1w"],
+                index=2,
+                key="main_timeframe"
+            )
+        st.markdown('</div>', unsafe_allow_html=True) # Fecha a div selection-section
     
     with st.spinner(f"Carregando dados de {moeda_selecionada}..."):
         endpoint_analise, limit_analise = get_timeframe_endpoint(timeframe_analise)
