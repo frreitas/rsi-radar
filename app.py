@@ -271,13 +271,12 @@ st.markdown(css, unsafe_allow_html=True)
 # --- Funções Auxiliares ---
 @st.cache_data(ttl=3600)
 def get_top_100_cryptos_data():
-    """Busca as 100 principais criptomoedas com seus dados completos."""
+    """Busca as 100 principais criptomoedas com seus dados completos (já ordenadas por capitalização de mercado)."""
     url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
     try:
         res = requests.get(url)
         res.raise_for_status()
         data = res.json()["Data"]
-        # Retorna a lista de dicionários, já ordenada por capitalização de mercado
         return data
     except Exception as e:
         st.error(f"Erro ao buscar lista de criptomoedas: {e}")
@@ -285,8 +284,9 @@ def get_top_100_cryptos_data():
 
 @st.cache_data(ttl=3600)
 def get_top_100_cryptos_names():
-    """Retorna apenas os nomes formatados das 100 principais criptomoedas."""
+    """Retorna os nomes formatados de TODAS as 100 principais criptomoedas, ordenadas alfabeticamente."""
     data = get_top_100_cryptos_data()
+    # Cria a lista de nomes formatados e a ordena alfabeticamente
     return sorted([f"{c['CoinInfo']['FullName']} ({c['CoinInfo']['Name']})" for c in data])
 
 
@@ -390,7 +390,7 @@ def obter_recomendacao_detalhada(tendencia, rsi_class, volume_class, macd_signal
     if tendencia == "Alta consolidada":
         if rsi_class == "Sobrevendido" and "Subindo" in volume_class and macd_signal == "Compra":
             rec_principal = "Compra Forte"
-            rec_detalhe_conciso = "Forte tendência de alta, ativo sobrevendido com volume crescente e sinal de compra MACD. Excelente oportunidade."
+            rec_detalhe_conciso = "Ativo em forte tendência de alta, sobrevendido com volume crescente e sinal de compra MACD. Excelente oportunidade."
         elif rsi_class == "Neutro" and "Subindo" in volume_class and macd_signal == "Compra":
             rec_principal = "Compra"
             rec_detalhe_conciso = "Tendência de alta confirmada, RSI neutro e sinal de compra MACD. Bom ponto de entrada."
@@ -536,10 +536,10 @@ def dashboard_page():
 
     st.subheader("Top 10 Criptomoedas por Capitalização de Mercado")
     
-    top_cryptos_data = get_top_100_cryptos_data()
+    top_cryptos_data = get_top_100_cryptos_data() # Já vem ordenada por capitalização de mercado
     
     data_for_dashboard = []
-    for i, crypto_info in enumerate(top_cryptos_data[:10]): # Pegar as 10 primeiras (já ordenadas por mkt cap)
+    for i, crypto_info in enumerate(top_cryptos_data[:10]): # Pegar as 10 primeiras
         symbol = crypto_info['CoinInfo']['Name']
         full_name = crypto_info['CoinInfo']['FullName']
         
@@ -635,7 +635,7 @@ def analysis_page():
     # Obter moeda e timeframe da sidebar
     moeda_selecionada = st.sidebar.selectbox(
         "Selecione a Moeda",
-        get_top_100_cryptos_names(),
+        get_top_100_cryptos_names(), # Usar a lista completa e ordenada alfabeticamente
         key="main_coin_select_sidebar",
         help="Escolha uma criptomoeda para análise detalhada"
     )
