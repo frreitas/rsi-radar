@@ -370,7 +370,7 @@ def mostrar_filtros():
     """Exibe os controles de filtragem"""
     with st.expander("🔍 FILTRAR MOEDAS POR INDICADORES", expanded=False): # Começa fechado
         # Usando st.container para agrupar os elementos do filtro
-        with st.container():
+        with st.container(border=True): # Adicionado border=True para visualização
             st.markdown('<div class="filter-grid">', unsafe_allow_html=True)
             
             col1, col2 = st.columns(2) # Reduzido para 2 colunas
@@ -499,8 +499,7 @@ def main():
     st.subheader("📈 Análise Individual")
     
     # Seção de seleção de moeda e timeframe para análise individual
-    with st.container(): # Usando st.container para a seção de seleção
-        st.markdown('<div class="selection-section">', unsafe_allow_html=True)
+    with st.container(border=True): # Usando st.container com border=True para a seção de seleção
         col1, col2 = st.columns([2, 1])
         
         with col1:
@@ -519,7 +518,6 @@ def main():
                 index=2,
                 key="main_timeframe"
             )
-        st.markdown('</div>', unsafe_allow_html=True) # Fecha a div selection-section
     
     with st.spinner(f"Carregando dados de {moeda_selecionada}..."):
         endpoint_analise, limit_analise = get_timeframe_endpoint(timeframe_analise)
@@ -581,8 +579,9 @@ def main():
 
     # Análise detalhada (Corrigida e Profissional)
     with st.expander("🔍 Detalhes da Análise", expanded=True):
-        st.markdown(f"""
-        <div class="analysis-details-section">
+        # Usando st.container para envolver os detalhes da análise
+        with st.container(border=True):
+            st.markdown(f"""
             <div class="analysis-details-item">
                 <h4>Tendência</h4>
                 <p><strong>{tendencia}</strong></p>
@@ -603,8 +602,7 @@ def main():
                 <p>Média: <strong>${volume_medio:,.0f}</strong></p>
                 <p>Tendência: <strong>{volume_class}</strong></p>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
     # Gráficos
     tab1, tab2 = st.tabs(["📊 Gráfico de Velas", "📈 Indicadores Técnicos"])
