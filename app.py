@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 import requests
-
 # Importar os módulos completos e depois acessar as classes
 import ta.momentum as ta_momentum
 import ta.trend as ta_trend
-
+import ta.volatility as ta_volatility 
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
