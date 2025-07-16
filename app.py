@@ -106,12 +106,58 @@ def classificar_rsi(rsi):
     elif rsi > 70: return "Sobrecomprado"
     else: return "Neutro"
 
-def classificar_tendencia(ema8, ema21, ema56, ema200):
-    if ema8 > ema21 > ema56 > ema200:
+def classificar_tendencia(ema8, ema21, ema56, ema200, ema8_anterior, ema21_anterior, ema56_anterior, ema200_anterior, preco_atual):
+    # Função auxiliar para verificar inclinação positiva
+    def inclinacao_positiva(atual, anterior):
+        return atual > anterior
+
+    # Função auxiliar para medir "distância saudável" entre EMAs
+    def distancia_segura(e1, e2, pct=0.01):
+        return abs(e1 - e2) / e2 >= pct  # pelo menos 1% de distância relativa entre elas
+
+    # Verificar se todas estão inclinadas para cima ou para baixo
+    inclinadas_para_cima = all([
+        inclinacao_positiva(ema8, ema8_anterior),
+        inclinacao_positiva(ema21, ema21_anterior),
+        inclinacao_positiva(ema56, ema56_anterior),
+        inclinacao_positiva(ema200, ema200_anterior)
+    ])
+    inclinadas_para_baixo = all([
+        not inclinacao_positiva(ema8, ema8_anterior),
+        not inclinacao_positiva(ema21, ema21_anterior),
+        not inclinacao_positiva(ema56, ema56_anterior),
+        not inclinacao_positiva(ema200, ema200_anterior)
+    ])
+
+    # Tendência de alta consolidada
+    if ema8 > ema21 > ema56 > ema200 and inclinadas_para_cima and all([
+        distancia_segura(ema8, ema21),
+        distancia_segura(ema21, ema56),
+        distancia_segura(ema56, ema200)
+    ]):
         return "Alta consolidada"
-    elif ema8 < ema21 < ema56 < ema200:
+
+    # Tendência de baixa consolidada
+    elif ema8 < ema21 < ema56 < ema200 and inclinadas_para_baixo and all([
+        distancia_segura(ema21, ema8),
+        distancia_segura(ema56, ema21),
+        distancia_segura(ema200, ema56)
+    ]):
         return "Baixa consolidada"
-    return "Neutra/Transição"
+
+    # Suporte: Preço atual testando EMA200 ou EMA56
+    elif abs(preco_atual - ema200) / ema200 < 0.01 or abs(preco_atual - ema56) / ema56 < 0.01:
+        return "Zona de Suporte"
+
+    # Resistência: Preço atual abaixo das EMAs e testando-as
+    elif preco_atual < ema8 and (
+        abs(preco_atual - ema8) / ema8 < 0.01 or
+        abs(preco_atual - ema21) / ema21 < 0.01
+    ):
+        return "Zona de Resistência"
+
+    # Cruzamentos ou tendência indefinida
+    return "Transição / Neutra"
 
 def classificar_volume(v_atual, v_medio):
     return "Subindo" if v_atual >= v_medio else "Caindo"
