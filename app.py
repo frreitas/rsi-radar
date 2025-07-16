@@ -348,29 +348,34 @@ for moeda in moedas_data:
     if len(df_semanal) < 60:
         continue
 
-    ema8 = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator()
-    ema21 = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator()
-    ema56 = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator()
-    ema200 = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator()
+    ema8_obj = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator()
+    ema21_obj = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator()
+    ema56_obj = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator()
+    ema200_obj = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator()
 
-    # Verificar tamanho para evitar erro
-    if len(ema8) < 2 or len(ema21) < 2 or len(ema56) < 2 or len(ema200) < 2:
+    if len(ema8_obj) < 2 or len(ema21_obj) < 2 or len(ema56_obj) < 2 or len(ema200_obj) < 2:
         continue
 
-    ema8_atual, ema8_ant = ema8.iloc[-1], ema8.iloc[-2]
-    ema21_atual, ema21_ant = ema21.iloc[-1], ema21.iloc[-2]
-    ema56_atual, ema56_ant = ema56.iloc[-1], ema56.iloc[-2]
-    ema200_atual, ema200_ant = ema200.iloc[-1], ema200.iloc[-2]
+    ema8 = ema8_obj.iloc[-1]
+    ema21 = ema21_obj.iloc[-1]
+    ema56 = ema56_obj.iloc[-1]
+    ema200 = ema200_obj.iloc[-1]
+
+    ema8_ant = ema8_obj.iloc[-2]
+    ema21_ant = ema21_obj.iloc[-2]
+    ema56_ant = ema56_obj.iloc[-2]
+    ema200_ant = ema200_obj.iloc[-2]
 
     volume_atual = df["volume"].iloc[-1]
     volume_medio = df["volume"].mean()
     volume_class = classificar_volume(volume_atual, volume_medio)
 
     tendencia = classificar_tendencia(
-        ema8_atual, ema21_atual, ema56_atual, ema200_atual,
+        ema8, ema21, ema56, ema200,
         ema8_ant, ema21_ant, ema56_ant, ema200_ant,
         preco_atual
     )
+
     recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class)
 
     if (not rsi_filtro or rsi_class in rsi_filtro) and (not tendencia_filtro or tendencia in tendencia_filtro):
@@ -387,3 +392,4 @@ if resultados:
     st.dataframe(pd.DataFrame(resultados).sort_values(by="Variação (%)", ascending=False))
 else:
     st.warning("Nenhuma moeda corresponde aos filtros selecionados.")
+
