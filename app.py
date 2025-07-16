@@ -489,4 +489,26 @@ if fng_valor is not None:
 
 else:
     st.info("Não foi possível obter o índice de Medo e Ganância no momento. Verifique sua conexão ou tente novamente mais tarde.")
-
+        # Calcular indicadores
+        rsi_valor = ta_momentum.RSIIndicator(close=df_analise_raw["close"], window=14).rsi().iloc[-1]
+        rsi_class = classificar_rsi(rsi_valor)
+        # Calcular EMAs
+        ema_fast = ta_trend.EMAIndicator(close=df_analise_raw["close"], window=ema_fast_period).ema_indicator().iloc[-1]
+        ema_medium = ta_trend.EMAIndicator(close=df_analise_raw["close"], window=ema_medium_period).ema_indicator().iloc[-1]
+        ema_slow = ta_trend.EMAIndicator(close=df_analise_raw["close"], window=ema_slow_period).ema_indicator().iloc[-1]
+        ema_long = ta_trend.EMAIndicator(close=df_analise_raw["close"], window=ema_long_period).ema_indicator().iloc[-1]
+        tendencia = classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long)
+        # Calcular volume
+        volume_atual = df_analise_raw["volume"].iloc[-1]
+        volume_medio = df_analise_raw["volume"].mean()
+        volume_class = classificar_volume(volume_atual, volume_medio)
+        # Verificar se a moeda atende aos critérios de filtragem
+        if (not tendencia_opcoes or tendencia in tendencia_opcoes) and \
+           (not rsi_opcoes or rsi_class in rsi_opcoes) and \
+           (not volume_opcoes or volume_class in volume_opcoes):
+            moedas_filtradas.append(moeda)
+    # Exibir resultados
+    if moedas_filtradas:
+        st.success(f"Moedas que atendem aos critérios: {', '.join(moedas_filtradas)}")
+    else:
+        st.warning("Nenhuma moeda atende aos critérios selecionados.")
