@@ -271,16 +271,31 @@ st.markdown(css, unsafe_allow_html=True)
 # --- Funções Auxiliares ---
 @st.cache_data(ttl=3600)
 def get_top_100_cryptos_data():
-    """Busca as 100 principais criptomoedas com seus dados completos (já ordenadas por capitalização de mercado)."""
+    """
+    Busca as 100 principais criptomoedas com seus dados completos (já ordenadas por capitalização de mercado).
+    Inclui um fallback para moedas populares caso a API falhe.
+    """
     url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
     try:
         res = requests.get(url)
-        res.raise_for_status()
+        res.raise_for_status() # Levanta um erro para status HTTP ruins (4xx ou 5xx)
         data = res.json()["Data"]
+        if not data: # Se a lista de dados estiver vazia
+            raise ValueError("API returned empty data.")
         return data
-    except Exception as e:
-        st.error(f"Erro ao buscar lista de criptomoedas: {e}")
-        return []
+    except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+        st.error(f"Erro ao buscar lista de criptomoedas da API: {e}. Usando lista de fallback.")
+        # Fallback para uma lista de moedas populares
+        fallback_cryptos = [
+            {"CoinInfo": {"FullName": "Bitcoin", "Name": "BTC"}},
+            {"CoinInfo": {"FullName": "Ethereum", "Name": "ETH"}},
+            {"CoinInfo": {"FullName": "Binance Coin", "Name": "BNB"}},
+            {"CoinInfo": {"FullName": "Solana", "Name": "SOL"}},
+            {"CoinInfo": {"FullName": "XRP", "Name": "XRP"}},
+            {"CoinInfo": {"FullName": "Cardano", "Name": "ADA"}},
+            {"CoinInfo": {"FullName": "Dogecoin", "Name": "DOGE"}},
+        ]
+        return fallback_cryptos
 
 @st.cache_data(ttl=3600)
 def get_top_100_cryptos_names():
@@ -460,23 +475,29 @@ def mostrar_filtros():
 def filtrar_moedas(filters):
     """Filtra as moedas com base nos critérios"""
     st.subheader("Resultados da Filtragem")
+    # Usar get_top_100_cryptos_names() para a barra de progresso, pois é a lista completa
     with st.spinner(f"Processando {len(get_top_100_cryptos_names())} moedas..."):
         resultados = []
         progress_bar = st.progress(0)
         
-        for i, moeda in enumerate(get_top_100_cryptos_names()):
-            simbolo = extrair_simbolo(moeda)
+        # Iterar sobre os dados completos para ter acesso ao FullName e Name
+        all_cryptos_data = get_top_100_cryptos_data()
+        
+        for i, crypto_info in enumerate(all_cryptos_data):
+            moeda_full_name = f"{crypto_info['CoinInfo']['FullName']} ({crypto_info['CoinInfo']['Name']})"
+            simbolo = crypto_info['CoinInfo']['Name'] # Usar o 'Name' como símbolo
+            
             endpoint, limit = get_timeframe_endpoint(filters['timeframe'])
             df = get_crypto_data(simbolo, endpoint, limit)
             
             if df.empty or len(df) < 50:
-                progress_bar.progress((i + 1) / len(get_top_100_cryptos_names()))
+                progress_bar.progress((i + 1) / len(all_cryptos_data))
                 continue
                 
             if filters['timeframe'] == "4h":
                 df = agrupar_4h_otimizado(df)
                 if df.empty or len(df) < 50:
-                    progress_bar.progress((i + 1) / len(get_top_100_cryptos_names()))
+                    progress_bar.progress((i + 1) / len(all_cryptos_data))
                     continue
                 
             # Calcular indicadores
@@ -509,7 +530,7 @@ def filtrar_moedas(filters):
             
             if conditions_met:
                 resultados.append({
-                    'Moeda': moeda,
+                    'Moeda': moeda_full_name,
                     'Símbolo': simbolo,
                     'Preço': preco,
                     'Variação': variacao,
@@ -519,7 +540,7 @@ def filtrar_moedas(filters):
                     'Data': df
                 })
             
-            progress_bar.progress((i + 1) / len(get_top_100_cryptos_names()))
+            progress_bar.progress((i + 1) / len(all_cryptos_data))
         
         progress_bar.empty()
         return resultados
@@ -539,7 +560,8 @@ def dashboard_page():
     top_cryptos_data = get_top_100_cryptos_data() # Já vem ordenada por capitalização de mercado
     
     data_for_dashboard = []
-    for i, crypto_info in enumerate(top_cryptos_data[:10]): # Pegar as 10 primeiras
+    # Iterar sobre as 10 primeiras moedas da lista já ordenada por capitalização de mercado
+    for i, crypto_info in enumerate(top_cryptos_data[:10]): 
         symbol = crypto_info['CoinInfo']['Name']
         full_name = crypto_info['CoinInfo']['FullName']
         
