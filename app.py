@@ -224,6 +224,23 @@ with st.spinner("Carregando dados..."):
         df_rsi["time"] = pd.to_datetime(df_rsi["time"], unit='s')
 
         if timeframe_rsi == "1w":
+            df_rsi = (
+                df_rsi.set_index("time")
+                .resample("W-MON")
+                .agg({"close": "last", "volume": "sum"})
+                .dropna()
+                .reset_index()
+            )
+        elif timeframe_rsi == "1M":
+            df_rsi = (
+                df_rsi.set_index("time")
+                .resample("M")
+                .agg({"close": "last", "volume": "sum"})
+                .dropna()
+                .reset_index()
+            )
+
+        if timeframe_rsi == "1w":
             df_rsi = df_rsi.resample('W-MON', on="time").last().dropna().reset_index()
         elif timeframe_rsi == "1M":
             df_rsi = df_rsi.resample('M', on="time").last().dropna().reset_index()
