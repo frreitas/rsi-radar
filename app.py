@@ -8,6 +8,7 @@ import ta.trend as ta_trend
 
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from plotly.subplots import make_subplots # Importar aqui para uso no gráfico
 
 st.set_page_config(page_title="Análise Técnica de Criptomoedas", layout="wide")
 
@@ -191,64 +192,87 @@ def classificar_volume(v_atual, v_medio):
 
 def obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal):
     """
-    Gera uma recomendação de negociação com base em múltiplos indicadores.
+    Gera uma recomendação de negociação robusta com base na confluência de múltiplos indicadores.
     """
-    # Inicializa a recomendação padrão
-    recomendacao = "Aguardar"
+    recomendacao = "Aguardar" # Recomendação padrão
 
-    # Lógica baseada na tendência principal
+    # --- Cenários de Compra ---
     if tendencia == "Alta consolidada":
         if rsi_class == "Sobrevendido" and volume_class == "Subindo" and macd_signal == "Compra":
-            recomendacao = "Compra"
-        elif rsi_class == "Neutro" and volume_class == "Subindo":
-            recomendacao = "Acumular / Espera"
-        elif rsi_class == "Sobrecomprado" and volume_class == "Subindo":
-            recomendacao = "Aguardar correção"
-
-    elif tendencia == "Baixa consolidada":
-        if rsi_class == "Sobrevendido" and volume_class == "Subindo" and macd_signal == "Compra":
-            recomendacao = "Observar reversão potencial com stop curto"
-        elif volume_class == "Caindo" or macd_signal == "Venda":
-            recomendacao = "Venda / Evitar"
-        elif rsi_class == "Neutro" and volume_class == "Subindo":
-            recomendacao = "Observar cautelosamente"
+            recomendacao = "Compra Forte" # Forte sinal de compra em tendência de alta
+        elif rsi_class == "Neutro" and volume_class == "Subindo" and macd_signal == "Compra":
+            recomendacao = "Compra" # Bom sinal de compra em tendência de alta
+        elif rsi_class == "Sobrevendido" and macd_signal == "Compra":
+            recomendacao = "Acumular" # Compra em correção dentro da alta
 
     elif tendencia == "Neutra/Transição":
         if rsi_class == "Sobrevendido" and volume_class == "Subindo" and macd_signal == "Compra":
-            recomendacao = "Observar"
-        elif rsi_class == "Neutro" and volume_class == "Caindo":
-            recomendacao = "Espera"
-        elif rsi_class == "Sobrecomprado":
-            if volume_class == "Subindo":
-                recomendacao = "Venda parcial para quem já está comprado; observar topo para quem não está dentro"
-            else:
-                recomendacao = "Esperar topo confirmado"
+            recomendacao = "Observar Reversão (Compra)" # Potencial reversão de baixa para alta
+        elif rsi_class == "Sobrevendido" and macd_signal == "Compra":
+            recomendacao = "Observar" # Sinais de compra, mas sem volume ou tendência clara
 
-    # Ajustes finos com base em MACD se a recomendação ainda for "Aguardar" ou genérica
-    if recomendacao == "Aguardar":
+    # --- Cenários de Venda ---
+    if tendencia == "Baixa consolidada":
+        if rsi_class == "Sobrecomprado" and volume_class == "Caindo" and macd_signal == "Venda":
+            recomendacao = "Venda Forte" # Forte sinal de venda em tendência de baixa
+        elif rsi_class == "Neutro" and volume_class == "Caindo" and macd_signal == "Venda":
+            recomendacao = "Venda" # Bom sinal de venda em tendência de baixa
+        elif rsi_class == "Sobrecomprado" and macd_signal == "Venda":
+            recomendacao = "Venda Parcial / Evitar" # Venda em repique dentro da baixa
+
+    elif tendencia == "Neutra/Transição":
+        if rsi_class == "Sobrecomprado" and volume_class == "Caindo" and macd_signal == "Venda":
+            recomendacao = "Observar Reversão (Venda)" # Potencial reversão de alta para baixa
+        elif rsi_class == "Sobrecomprado" and macd_signal == "Venda":
+            recomendacao = "Observar" # Sinais de venda, mas sem volume ou tendência clara
+
+    # --- Cenários de Consolidação / Indecisão ---
+    if tendencia == "Neutra/Transição":
+        if rsi_class == "Neutro" and volume_class == "Caindo":
+            recomendacao = "Espera" # Sem sinais claros, volume caindo
+        elif rsi_class == "Neutro" and macd_signal == "Neutro":
+            recomendacao = "Aguardar" # Indecisão geral
+
+    # --- Cenários de Alerta / Evitar ---
+    if tendencia == "Baixa consolidada":
+        if volume_class == "Caindo" and macd_signal == "Venda":
+            recomendacao = "Evitar" # Forte indicação de baixa, não entrar
+        elif rsi_class == "Neutro" and volume_class == "Caindo":
+            recomendacao = "Evitar" # Sem sinais de reversão em baixa
+
+    # --- Ajustes Finais para Casos Específicos ---
+    if recomendacao == "Aguardar": # Se ainda for "Aguardar", refinar com sinais mais fracos
         if macd_signal == "Compra":
-            recomendacao = "Aguardar confirmação (MACD compra)"
+            recomendacao = "Aguardar Confirmação (MACD Compra)"
         elif macd_signal == "Venda":
-            recomendacao = "Aguardar confirmação (MACD venda)"
+            recomendacao = "Aguardar Confirmação (MACD Venda)"
+        elif rsi_class == "Sobrevendido":
+            recomendacao = "Aguardar Confirmação (RSI Sobrevendido)"
+        elif rsi_class == "Sobrecomprado":
+            recomendacao = "Aguardar Confirmação (RSI Sobrecomprado)"
 
     return recomendacao
 
 def style_recomendacao_card(text):
     """Mapeia o texto da recomendação para um estilo de cartão CSS."""
     styles = {
-        "Compra": ("Compra Forte", "rec-compra"),
-        "Acumular / Espera": ("Atenção", "rec-acumular"),
-        "Aguardar correção": ("Aguardar", "rec-agardar"),
-        "Venda / Evitar": ("Venda Forte", "rec-venda"),
+        "Compra Forte": ("Compra Forte", "rec-compra"),
+        "Compra": ("Compra", "rec-compra"),
+        "Acumular": ("Acumular", "rec-acumular"),
+        "Aguardar correção": ("Aguardar", "rec-agardar"), # Mantido, pode ser útil
+        "Venda Forte": ("Venda Forte", "rec-venda"),
+        "Venda": ("Venda", "rec-venda"),
+        "Venda Parcial / Evitar": ("Venda Parcial", "rec-vendaparcial"),
+        "Observar Reversão (Compra)": ("Observar Reversão", "rec-observar"),
+        "Observar Reversão (Venda)": ("Observar Reversão", "rec-observar"),
         "Observar": ("Observar", "rec-observar"),
         "Espera": ("Espera", "rec-espera"),
-        "Venda parcial para quem já está comprado; observar topo para quem não está dentro": ("Venda Parcial", "rec-vendaparcial"),
-        "Observar reversão potencial com stop curto": ("Observar Reversão", "rec-observar"),
-        "Observar cautelosamente": ("Observar Cautelosamente", "rec-observar"),
-        "Esperar topo confirmado": ("Esperar Topo Confirmado", "rec-espera"),
+        "Evitar": ("Evitar", "rec-venda"), # Usar cor de venda para evitar
         "Aguardar": ("Aguardar", "rec-default"),
-        "Aguardar confirmação (MACD compra)": ("Aguardar Compra", "rec-acumular"),
-        "Aguardar confirmação (MACD venda)": ("Aguardar Venda", "rec-agardar"),
+        "Aguardar Confirmação (MACD Compra)": ("Aguardar Confirmação", "rec-acumular"),
+        "Aguardar Confirmação (MACD Venda)": ("Aguardar Confirmação", "rec-agardar"),
+        "Aguardar Confirmação (RSI Sobrevendido)": ("Aguardar Confirmação", "rec-acumular"),
+        "Aguardar Confirmação (RSI Sobrecomprado)": ("Aguardar Confirmação", "rec-agardar"),
     }
     return styles.get(text, ("Desconhecido", "rec-default"))
 
@@ -425,7 +449,6 @@ if not df_analise.empty and len(df_analise) > 1:
     )
 
     # Criar subplots para RSI e MACD
-    from plotly.subplots import make_subplots
     fig_subplots = make_subplots(rows=2, cols=1, shared_xaxes=True,
                                  vertical_spacing=0.1,
                                  row_heights=[0.5, 0.5])
