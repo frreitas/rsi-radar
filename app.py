@@ -250,7 +250,7 @@ with st.spinner("Carregando dados..."):
     ema21 = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-1]
     ema56 = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-1]
     ema200 = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator().iloc[-1]
-    tendencia = classificar_tendencia(ema8, ema21, ema56, ema200)
+    tendencia = classificar_tendencia(ema8, ema21, ema56, ema200, ema8_ant, ema21_ant, ema56_ant, ema200_ant, preco_atual)
 
     volume_atual = df_diario["volume"].iloc[-1]
     volume_medio = df_diario["volume"].mean()
