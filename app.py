@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from ta.momentum import RSIIndicator
-from ta.trend import MACD # MACD agora está em ta.trend
+from ta.trend import EMAIndicator, BollingerBands, MACD
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
