@@ -314,3 +314,59 @@ if fng is not None:
     """, unsafe_allow_html=True)
 else:
     st.info("Não foi possível carregar o Índice de Medo e Ganância.")
+    with abas[1]:
+    st.subheader("\U0001F50D Análise por Filtros")
+
+    rsi_filtro = st.multiselect("Filtrar por RSI", ["Sobrevendido", "Neutro", "Sobrecomprado"])
+    tendencia_filtro = st.multiselect("Filtrar por Tendência", ["Alta consolidada", "Baixa consolidada", "Zona de Suporte", "Zona de Resistência", "Transição / Neutra"])
+
+    resultados = []
+    moedas_data = get_top_100_cryptos()
+    for moeda in moedas_data:
+        nome = moeda["CoinInfo"]["FullName"]
+        simbolo = moeda["CoinInfo"]["Name"]
+        df = get_crypto_data(simbolo, "histoday", 400)
+        if df.empty or len(df) < 60:
+            continue
+
+        preco_atual = df["close"].iloc[-1]
+        preco_ontem = df["close"].iloc[-2]
+        variacao = (preco_atual - preco_ontem) / preco_ontem * 100
+        rsi_valor = RSIIndicator(close=df["close"], window=14).rsi().iloc[-1]
+        rsi_class = classificar_rsi(rsi_valor)
+
+        df["date"] = pd.to_datetime(df["time"])
+        df_semanal = df.resample("W-MON", on="date").last().dropna()
+        if len(df_semanal) < 60:
+            continue
+
+        ema8 = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator().iloc[-1]
+        ema21 = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-1]
+        ema56 = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-1]
+        ema200 = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator().iloc[-1]
+        ema8_ant = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator().iloc[-2]
+        ema21_ant = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-2]
+        ema56_ant = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-2]
+        ema200_ant = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator().iloc[-2]
+
+        volume_atual = df["volume"].iloc[-1]
+        volume_medio = df["volume"].mean()
+        volume_class = classificar_volume(volume_atual, volume_medio)
+
+        tendencia = classificar_tendencia(ema8, ema21, ema56, ema200, ema8_ant, ema21_ant, ema56_ant, ema200_ant, preco_atual)
+        recomendacao = obter_recomendacao(tendencia, rsi_class, volume_class)
+
+        if (not rsi_filtro or rsi_class in rsi_filtro) and (not tendencia_filtro or tendencia in tendencia_filtro):
+            resultados.append({
+                "Moeda": nome,
+                "Variação (%)": round(variacao, 2),
+                "RSI": f"{rsi_valor:.2f} ({rsi_class})",
+                "Tendência": tendencia,
+                "Volume": volume_class,
+                "Recomendação": recomendacao
+            })
+
+    if resultados:
+        st.dataframe(pd.DataFrame(resultados).sort_values(by="Variação (%)", ascending=False))
+    else:
+        st.warning("Nenhuma moeda corresponde aos filtros selecionados.")
