@@ -1,8 +1,11 @@
 import streamlit as st
 import pandas as pd
 import requests
-from ta.momentum import RSIIndicator
-from ta.trend import EMAIndicator, BollingerBands, MACD
+
+# Importar os módulos completos e depois acessar as classes
+import ta.momentum as ta_momentum
+import ta.trend as ta_trend
+
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
@@ -315,7 +318,7 @@ with st.spinner("Carregando dados e calculando indicadores..."):
         df_analise = df_analise_raw.copy()
 
     if df_analise.empty or len(df_analise) < max(ema_long_period, 200): # Garantir dados suficientes para EMAs longas
-        st.error(f"Dados insuficientes para o timeframe '{timeframe_analise}' ou para calcular todas as EMAs. Tente um timeframe maior ou outra moeda.")
+        st.warning(f"Dados insuficientes para o timeframe '{timeframe_analise}' ou para calcular todas as EMAs. Tente um timeframe maior ou outra moeda.")
         st.stop()
 
     # --- Cálculo de Indicadores ---
@@ -335,11 +338,11 @@ with st.spinner("Carregando dados e calculando indicadores..."):
     volume_medio = df_analise["volume"].mean()
 
     # RSI no timeframe selecionado
-    rsi_valor = RSIIndicator(close=df_analise["close"], window=14).rsi().iloc[-1]
+    rsi_valor = ta_momentum.RSIIndicator(close=df_analise["close"], window=14).rsi().iloc[-1]
     rsi_class = classificar_rsi(rsi_valor)
 
     # MACD no timeframe selecionado
-    macd_indicator = MACD(close=df_analise["close"])
+    macd_indicator = ta_trend.MACD(close=df_analise["close"]) # Usando ta_trend.MACD
     macd_line = macd_indicator.macd().iloc[-1]
     macd_signal_line = macd_indicator.macd_signal().iloc[-1]
     macd_diff = macd_indicator.macd_diff().iloc[-1] # Histograma
@@ -350,7 +353,7 @@ with st.spinner("Carregando dados e calculando indicadores..."):
         macd_signal = "Venda"
 
     # Bandas de Bollinger no timeframe selecionado
-    bb_indicator = BollingerBands(close=df_analise["close"])
+    bb_indicator = ta_trend.BollingerBands(close=df_analise["close"]) # Usando ta_trend.BollingerBands
     bb_upper = bb_indicator.bollinger_hband().iloc[-1]
     bb_lower = bb_indicator.bollinger_lband().iloc[-1]
     bb_signal = "Neutro"
@@ -366,10 +369,10 @@ with st.spinner("Carregando dados e calculando indicadores..."):
         ema_fast, ema_medium, ema_slow, ema_long = [None]*4
         tendencia = "Dados insuficientes para EMAs"
     else:
-        ema_fast = EMAIndicator(close=df_analise["close"], window=ema_fast_period).ema_indicator().iloc[-1]
-        ema_medium = EMAIndicator(close=df_analise["close"], window=ema_medium_period).ema_indicator().iloc[-1]
-        ema_slow = EMAIndicator(close=df_analise["close"], window=ema_slow_period).ema_indicator().iloc[-1]
-        ema_long = EMAIndicator(close=df_analise["close"], window=ema_long_period).ema_indicator().iloc[-1]
+        ema_fast = ta_trend.EMAIndicator(close=df_analise["close"], window=ema_fast_period).ema_indicator().iloc[-1] # Usando ta_trend.EMAIndicator
+        ema_medium = ta_trend.EMAIndicator(close=df_analise["close"], window=ema_medium_period).ema_indicator().iloc[-1] # Usando ta_trend.EMAIndicator
+        ema_slow = ta_trend.EMAIndicator(close=df_analise["close"], window=ema_slow_period).ema_indicator().iloc[-1] # Usando ta_trend.EMAIndicator
+        ema_long = ta_trend.EMAIndicator(close=df_analise["close"], window=ema_long_period).ema_indicator().iloc[-1] # Usando ta_trend.EMAIndicator
         tendencia = classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long)
 
     volume_class = classificar_volume(volume_atual, volume_medio)
@@ -418,19 +421,19 @@ if not df_analise.empty and len(df_analise) > 1:
 
     # Adicionar EMAs ao gráfico principal
     if ema_fast is not None: # Verifica se as EMAs foram calculadas
-        fig_chart.add_trace(go.Scatter(x=df_analise.index, y=EMAIndicator(close=df_analise["close"], window=ema_fast_period).ema_indicator(),
+        fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.EMAIndicator(close=df_analise["close"], window=ema_fast_period).ema_indicator(),
                                    mode='lines', name=f'EMA {ema_fast_period}', line=dict(color='orange', width=1)))
-        fig_chart.add_trace(go.Scatter(x=df_analise.index, y=EMAIndicator(close=df_analise["close"], window=ema_medium_period).ema_indicator(),
+        fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.EMAIndicator(close=df_analise["close"], window=ema_medium_period).ema_indicator(),
                                    mode='lines', name=f'EMA {ema_medium_period}', line=dict(color='purple', width=1)))
-        fig_chart.add_trace(go.Scatter(x=df_analise.index, y=EMAIndicator(close=df_analise["close"], window=ema_slow_period).ema_indicator(),
+        fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.EMAIndicator(close=df_analise["close"], window=ema_slow_period).ema_indicator(),
                                    mode='lines', name=f'EMA {ema_slow_period}', line=dict(color='brown', width=1)))
-        fig_chart.add_trace(go.Scatter(x=df_analise.index, y=EMAIndicator(close=df_analise["close"], window=ema_long_period).ema_indicator(),
+        fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.EMAIndicator(close=df_analise["close"], window=ema_long_period).ema_indicator(),
                                    mode='lines', name=f'EMA {ema_long_period}', line=dict(color='blue', width=1)))
 
     # Adicionar Bandas de Bollinger ao gráfico principal
-    fig_chart.add_trace(go.Scatter(x=df_analise.index, y=bb_indicator.bollinger_hband(),
+    fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.BollingerBands(close=df_analise["close"]).bollinger_hband(),
                                    mode='lines', name='BB Superior', line=dict(color='gray', width=1, dash='dash')))
-    fig_chart.add_trace(go.Scatter(x=df_analise.index, y=bb_indicator.bollinger_lband(),
+    fig_chart.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.BollingerBands(close=df_analise["close"]).bollinger_lband(),
                                    mode='lines', name='BB Inferior', line=dict(color='gray', width=1, dash='dash')))
 
     fig_chart.update_layout(
@@ -444,18 +447,18 @@ if not df_analise.empty and len(df_analise) > 1:
     fig_subplots = go.Figure()
 
     # Subplot RSI
-    fig_subplots.add_trace(go.Scatter(x=df_analise.index, y=RSIIndicator(close=df_analise["close"], window=14).rsi(),
+    fig_subplots.add_trace(go.Scatter(x=df_analise.index, y=ta_momentum.RSIIndicator(close=df_analise["close"], window=14).rsi(),
                                       mode='lines', name='RSI', line=dict(color='green')), row=1, col=1)
     fig_subplots.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Sobrecomprado", annotation_position="top right", row=1, col=1)
     fig_subplots.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Sobrevendido", annotation_position="bottom right", row=1, col=1)
     fig_subplots.update_yaxes(range=[0, 100], title_text="RSI", row=1, col=1)
 
     # Subplot MACD
-    fig_subplots.add_trace(go.Scatter(x=df_analise.index, y=macd_indicator.macd(),
+    fig_subplots.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.MACD(close=df_analise["close"]).macd(),
                                       mode='lines', name='MACD Linha', line=dict(color='blue')), row=2, col=1)
-    fig_subplots.add_trace(go.Scatter(x=df_analise.index, y=macd_indicator.macd_signal(),
+    fig_subplots.add_trace(go.Scatter(x=df_analise.index, y=ta_trend.MACD(close=df_analise["close"]).macd_signal(),
                                       mode='lines', name='MACD Sinal', line=dict(color='red')), row=2, col=1)
-    fig_subplots.add_trace(go.Bar(x=df_analise.index, y=macd_indicator.macd_diff(),
+    fig_subplots.add_trace(go.Bar(x=df_analise.index, y=ta_trend.MACD(close=df_analise["close"]).macd_diff(),
                                    name='MACD Histograma', marker_color='gray'), row=2, col=1)
     fig_subplots.update_yaxes(title_text="MACD", row=2, col=1)
 
