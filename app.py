@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Análise Técnica de Criptomoedas", layout="wide")
 
-# --- Estilo CSS ---
+# --- Estilo CSS para visual limpo e profissional ---
 st.markdown("""
 <style>
 .main .block-container { max-width: 1100px; padding: 1rem 2rem; }
@@ -40,6 +40,7 @@ h1 { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-weight: 
 st.title("📊 Análise Técnica de Criptomoedas")
 
 # --- Funções auxiliares ---
+
 @st.cache_data(ttl=3600)
 def get_top_100_cryptos():
     url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
@@ -170,36 +171,42 @@ st.subheader("📈 Análise Técnica")
 with st.spinner("Carregando dados..."):
     endpoint, limite = get_timeframe_endpoint(timeframe)
     df = get_crypto_data(simbolo, endpoint, limite)
+
     if df.empty:
         st.error("Erro ao carregar dados.")
         st.stop()
 
+    # Agrupamento especial para 4h
     if timeframe == "4h":
         df = agrupar_4h(df)
 
+    # AGRUPAR para RSI SEMANAL e MENSAL:
+    if timeframe == "1w":
+        df = df.copy()
+        df.set_index("time", inplace=True)
+        df = df.resample("W-MON").last().dropna().reset_index()
     elif timeframe == "1M":
         df = df.copy()
         df.set_index("time", inplace=True)
-        df = df.resample("M").agg({
-            "close": "last",
-            "volume": "sum",
-            "open": "first",
-            "high": "max",
-            "low": "min"
-        }).dropna().reset_index()
+        df = df.resample("M").last().dropna().reset_index()
 
+    # Calcular RSI
     rsi_valor = RSIIndicator(close=df["close"], window=14).rsi().iloc[-1]
     rsi_class = classificar_rsi(rsi_valor)
 
+    # Para EMAs e volume sempre usar dados diários (melhor base)
     df_diario = get_crypto_data(simbolo, "histoday", 400)
+    if df_diario.empty or len(df_diario) < 50:
+        st.error("Dados insuficientes para análise. Tente novamente mais tarde.")
+        st.stop()
     df_diario["date"] = pd.to_datetime(df_diario["time"])
-    df_semanal = df_diario.resample("W-MON", on="date").last().dropna()
 
+    # EMAs semanais
+    df_semanal = df_diario.resample("W-MON", on="date").last().dropna()
     ema8 = EMAIndicator(close=df_semanal["close"], window=8).ema_indicator().iloc[-1]
     ema21 = EMAIndicator(close=df_semanal["close"], window=21).ema_indicator().iloc[-1]
     ema56 = EMAIndicator(close=df_semanal["close"], window=56).ema_indicator().iloc[-1]
     ema200 = EMAIndicator(close=df_semanal["close"], window=200).ema_indicator().iloc[-1]
-
     tendencia = classificar_tendencia(ema8, ema21, ema56, ema200)
 
     volume_atual = df_diario["volume"].iloc[-1]
@@ -213,7 +220,7 @@ with st.spinner("Carregando dados..."):
     preco_ontem = df_diario["close"].iloc[-2]
     variacao = (preco_atual - preco_ontem) / preco_ontem * 100
 
-# --- Exibição ---
+# --- Exibição de Métricas ---
 colA, colB, colC = st.columns(3)
 colA.metric("💵 Preço Atual (USD)", f"${preco_atual:,.2f}", f"{variacao:.2f}%")
 colB.metric("📊 Volume (24h)", f"${volume_atual:,.2f}")
@@ -221,6 +228,7 @@ colC.metric("📉 Volume Médio", f"${volume_medio:,.2f}")
 
 st.divider()
 
+# --- Análise Técnica ---
 st.markdown(f"""
 <div class="analysis-container">
     <h4 style="color:#334155;">Tendência (EMAs Semanais): <strong>{tendencia}</strong></h4>
@@ -235,7 +243,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- Índice de Medo e Ganância ---
+# --- Fear & Greed Index ---
 fng = get_fear_greed_index()
 if fng is not None:
     fig = go.Figure(go.Indicator(
