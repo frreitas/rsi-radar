@@ -113,11 +113,11 @@ h4 {
 /* Card de Recomendação */
 .recommendation-card {
     border-radius: 16px;
-    padding: 25px 30px;
+    padding: 15px 20px; /* Reduzido o padding */
     font-weight: 700;
-    font-size: 32px;
+    font-size: 24px; /* Reduzido o font-size */
     max-width: 550px;
-    margin: 30px auto;
+    margin: 20px auto; /* Reduzido a margem */
     box-shadow: 0 8px 25px rgba(0,0,0,0.15);
     text-align: center;
     color: var(--text-light);
@@ -125,11 +125,11 @@ h4 {
     border: none;
 }
 .recommendation-card .main-text {
-    font-size: 1.2em;
+    font-size: 1em; /* Ajustado para ser relativo ao font-size do card */
     margin-bottom: 0.5em;
 }
 .recommendation-card .sub-text {
-    font-size: 0.6em; /* Ajustado para ser menor que o main-text */
+    font-size: 0.7em; /* Ajustado para ser menor que o main-text */
     font-weight: 400;
     opacity: 0.9;
     line-height: 1.3;
@@ -235,14 +235,14 @@ h4 {
         grid-template-columns: 1fr;
     }
     .recommendation-card {
-        font-size: 24px;
-        padding: 20px;
+        font-size: 20px; /* Ainda menor em mobile */
+        padding: 15px;
     }
     .recommendation-card .main-text {
         font-size: 1em;
     }
     .recommendation-card .sub-text {
-        font-size: 0.5em;
+        font-size: 0.6em;
     }
 }
 </style>
@@ -608,13 +608,6 @@ def main():
                if volume_medio > 0 else "")
     col3.metric("📉 RSI (14)", f"{rsi:.1f}", rsi_class)
 
-    st.markdown(f"""
-    <div class="recommendation-card {classe_card}">
-        <div class="main-text">{texto_card}</div>
-        <div class="sub-text">{texto_detalhe_card}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
     # Análise detalhada (Corrigida e Profissional)
     with st.expander("🔍 Detalhes da Análise", expanded=True):
         # Usando st.container para envolver os detalhes da análise
@@ -646,6 +639,14 @@ def main():
                 <p>Tendência: <strong>{volume_class}</strong></p>
             </div>
             """, unsafe_allow_html=True)
+
+    # Card de recomendação (MOVIDO PARA CÁ)
+    st.markdown(f"""
+    <div class="recommendation-card {classe_card}">
+        <div class="main-text">{texto_card}</div>
+        <div class="sub-text">{texto_detalhe_card}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Gráficos
     tab1, tab2 = st.tabs(["📊 Gráfico de Velas", "📈 Indicadores Técnicos"])
