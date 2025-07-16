@@ -273,41 +273,58 @@ st.markdown(css, unsafe_allow_html=True)
 def get_top_100_cryptos_data():
     """
     Busca as 100 principais criptomoedas com seus dados completos (já ordenadas por capitalização de mercado).
-    Inclui um fallback para moedas populares caso a API falhe.
+    Retorna uma lista vazia em caso de falha da API.
     """
     url = "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD"
     try:
         res = requests.get(url)
         res.raise_for_status() # Levanta um erro para status HTTP ruins (4xx ou 5xx)
         data = res.json()["Data"]
-        if not data: # Se a lista de dados estiver vazia
-            raise ValueError("API returned empty data.")
         return data
     except (requests.exceptions.RequestException, ValueError, KeyError) as e:
-        st.error(f"Erro ao buscar lista de criptomoedas da API: {e}. Usando lista de fallback.")
-        # Fallback para uma lista de moedas populares
-        fallback_cryptos = [
-            {"CoinInfo": {"FullName": "Bitcoin", "Name": "BTC"}},
-            {"CoinInfo": {"FullName": "Ethereum", "Name": "ETH"}},
-            {"CoinInfo": {"FullName": "Binance Coin", "Name": "BNB"}},
-            {"CoinInfo": {"FullName": "Solana", "Name": "SOL"}},
-            {"CoinInfo": {"FullName": "XRP", "Name": "XRP"}},
-            {"CoinInfo": {"FullName": "Cardano", "Name": "ADA"}},
-            {"CoinInfo": {"FullName": "Dogecoin", "Name": "DOGE"}},
-        ]
-        return fallback_cryptos
+        st.error(f"Erro ao buscar lista de criptomoedas da API: {e}. Retornando lista vazia.")
+        return []
 
 @st.cache_data(ttl=3600)
 def get_top_100_cryptos_names():
-    """Retorna os nomes formatados de TODAS as 100 principais criptomoedas, ordenadas alfabeticamente."""
+    """
+    Retorna os nomes formatados de TODAS as 100 principais criptomoedas,
+    garantindo que moedas populares estejam presentes, e ordenadas alfabeticamente.
+    """
     data = get_top_100_cryptos_data()
-    # Cria a lista de nomes formatados e a ordena alfabeticamente
-    return sorted([f"{c['CoinInfo']['FullName']} ({c['CoinInfo']['Name']})" for c in data])
+    
+    # Lista de moedas populares para garantir presença
+    guaranteed_cryptos = {
+        "Bitcoin (BTC)", "Ethereum (ETH)", "Binance Coin (BNB)",
+        "Solana (SOL)", "XRP (XRP)", "Cardano (ADA)", "Dogecoin (DOGE)"
+    }
+    
+    all_crypto_names = set()
+    for c in data:
+        if 'CoinInfo' in c and 'FullName' in c['CoinInfo'] and 'Name' in c['CoinInfo']:
+            all_crypto_names.add(f"{c['CoinInfo']['FullName']} ({c['CoinInfo']['Name']})")
+    
+    # Adiciona as moedas garantidas, se ainda não estiverem presentes
+    all_crypto_names.update(guaranteed_cryptos)
+    
+    sorted_names = sorted(list(all_crypto_names))
+    
+    # Opcional: Mover as moedas garantidas para o topo da lista para o selectbox
+    # Isso pode ser útil para facilitar a seleção, mas mantém a ordenação alfabética geral
+    # Se quiser que elas apareçam no topo, independentemente da ordem alfabética,
+    # você precisaria de uma lógica de ordenação personalizada aqui.
+    # Por enquanto, manteremos a ordenação alfabética para simplicidade e consistência.
+    
+    return sorted_names
 
 
 def extrair_simbolo(moeda_str):
     """Extrai o símbolo da criptomoeda"""
-    return moeda_str.split("(")[-1].replace(")", "").strip()
+    # Garante que a string tenha o formato esperado antes de tentar extrair
+    if "(" in moeda_str and ")" in moeda_str:
+        return moeda_str.split("(")[-1].replace(")", "").strip()
+    return moeda_str.strip() # Retorna a string original se o formato não for encontrado
+
 
 @st.cache_data(ttl=600)
 def get_timeframe_endpoint(timeframe):
@@ -338,7 +355,7 @@ def get_crypto_data(symbol, endpoint="histoday", limit=200):
         df = df.rename(columns={'volumeto': 'volume'}).dropna() # Remove linhas com NaN após conversão
         return df
     except Exception as e:
-        st.error(f"Erro ao buscar dados de {symbol}: {e}")
+        # st.warning(f"Erro ao buscar dados de {symbol} para {endpoint}: {e}") # Comentado para evitar spam de warnings
         return pd.DataFrame()
 
 @st.cache_data(ttl=1800)
@@ -475,28 +492,36 @@ def mostrar_filtros():
 def filtrar_moedas(filters):
     """Filtra as moedas com base nos critérios"""
     st.subheader("Resultados da Filtragem")
-    # Usar get_top_100_cryptos_names() para a barra de progresso, pois é a lista completa
-    with st.spinner(f"Processando {len(get_top_100_cryptos_names())} moedas..."):
+    
+    all_cryptos_data = get_top_100_cryptos_data()
+    if not all_cryptos_data:
+        st.warning("Não foi possível obter a lista de criptomoedas para filtragem.")
+        return []
+
+    with st.spinner(f"Processando {len(all_cryptos_data)} moedas para filtragem..."):
         resultados = []
         progress_bar = st.progress(0)
         
-        # Iterar sobre os dados completos para ter acesso ao FullName e Name
-        all_cryptos_data = get_top_100_cryptos_data()
-        
         for i, crypto_info in enumerate(all_cryptos_data):
+            # Adicionado verificação para garantir que 'CoinInfo' e suas chaves existam
+            if 'CoinInfo' not in crypto_info or 'FullName' not in crypto_info['CoinInfo'] or 'Name' not in crypto_info['CoinInfo']:
+                # st.warning(f"Dados incompletos para criptomoeda: {crypto_info}. Pulando.") # Para depuração
+                progress_bar.progress((i + 1) / len(all_cryptos_data))
+                continue
+
             moeda_full_name = f"{crypto_info['CoinInfo']['FullName']} ({crypto_info['CoinInfo']['Name']})"
             simbolo = crypto_info['CoinInfo']['Name'] # Usar o 'Name' como símbolo
             
             endpoint, limit = get_timeframe_endpoint(filters['timeframe'])
             df = get_crypto_data(simbolo, endpoint, limit)
             
-            if df.empty or len(df) < 50:
+            if df.empty or len(df) < 50: # Mínimo de dados para indicadores
                 progress_bar.progress((i + 1) / len(all_cryptos_data))
                 continue
                 
             if filters['timeframe'] == "4h":
                 df = agrupar_4h_otimizado(df)
-                if df.empty or len(df) < 50:
+                if df.empty or len(df) < 50: # Verifica novamente após agrupamento
                     progress_bar.progress((i + 1) / len(all_cryptos_data))
                     continue
                 
@@ -512,9 +537,9 @@ def filtrar_moedas(filters):
             macd_signal_val = "Compra" if macd.macd().iloc[-1] > macd.macd_signal().iloc[-1] else "Venda"
             
             ema_fast = ta_trend.EMAIndicator(df['close'], 8).ema_indicator().iloc[-1] if len(df) >= 8 else None
-            ema_medium = ta_trend.EMAIndicator(df['close'], 21).ema_indicator().iloc[-1] if len(df) >= 21 else None
-            ema_slow = ta_trend.EMAIndicator(df['close'], 50).ema_indicator().iloc[-1] if len(df) >= 50 else None
-            ema_long = ta_trend.EMAIndicator(df['close'], 200).ema_indicator().iloc[-1] if len(df) >= 200 else None
+            ema_medium = ta.trend.EMAIndicator(df['close'], 21).ema_indicator().iloc[-1] if len(df) >= 21 else None
+            ema_slow = ta.trend.EMAIndicator(df['close'], 50).ema_indicator().iloc[-1] if len(df) >= 50 else None
+            ema_long = ta.trend.EMAIndicator(df['close'], 200).ema_indicator().iloc[-1] if len(df) >= 200 else None
             
             tendencia = classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long)
             volume_class = classificar_volume(volume_atual, volume_medio)
@@ -562,6 +587,11 @@ def dashboard_page():
     data_for_dashboard = []
     # Iterar sobre as 10 primeiras moedas da lista já ordenada por capitalização de mercado
     for i, crypto_info in enumerate(top_cryptos_data[:10]): 
+        # Adicionado verificação para garantir que 'CoinInfo' e suas chaves existam
+        if 'CoinInfo' not in crypto_info or 'FullName' not in crypto_info['CoinInfo'] or 'Name' not in crypto_info['CoinInfo']:
+            # st.warning(f"Dados incompletos para criptomoeda no dashboard: {crypto_info}. Pulando.") # Para depuração
+            continue
+
         symbol = crypto_info['CoinInfo']['Name']
         full_name = crypto_info['CoinInfo']['FullName']
         
@@ -591,7 +621,7 @@ def dashboard_page():
         df_dashboard = pd.DataFrame(data_for_dashboard)
         st.dataframe(df_dashboard, use_container_width=True, height=400)
     else:
-        st.warning("Não foi possível carregar dados para o dashboard.")
+        st.warning("Não foi possível carregar dados para o dashboard. Verifique a conexão com a API ou se há dados suficientes.")
 
     st.divider()
     st.subheader("🌡️ Índice de Medo e Ganância do Mercado")
@@ -675,13 +705,13 @@ def analysis_page():
         df_analise_raw = get_crypto_data(simbolo, endpoint_analise, limit_analise)
         
         if df_analise_raw.empty:
-            st.error("Dados insuficientes para análise")
+            st.error(f"Dados insuficientes para análise de {moeda_selecionada}. Por favor, tente outra moeda ou timeframe.")
             st.stop()
             
         if timeframe_analise == "4h":
             df_analise = agrupar_4h_otimizado(df_analise_raw)
             if df_analise.empty:
-                st.error("Dados insuficientes após agrupamento para 4h.")
+                st.error(f"Dados insuficientes após agrupamento para 4h para {moeda_selecionada}. Por favor, tente outro timeframe.")
                 st.stop()
         else:
             df_analise = df_analise_raw.copy()
