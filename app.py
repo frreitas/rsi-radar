@@ -219,10 +219,14 @@ with st.spinner("Carregando dados..."):
         df_rsi_raw.index = range(len(df_rsi_raw))
         df_rsi = agrupar_4h(df_rsi_raw)
     else:
-        df_rsi = df_rsi_raw.copy()
-        if not df_rsi.empty:
-            df_rsi["time"] = pd.to_datetime(df_rsi["time"], unit='s')
+    df_rsi = df_rsi_raw.copy()
+    if not df_rsi.empty:
+        df_rsi["time"] = pd.to_datetime(df_rsi["time"], unit='s')
 
+        if timeframe_rsi == "1w":
+            df_rsi = df_rsi.resample('W-MON', on="time").last().dropna().reset_index()
+        elif timeframe_rsi == "1M":
+            df_rsi = df_rsi.resample('M', on="time").last().dropna().reset_index()
     # Dados semanais para EMAs: usar histoday e pegar média semanal para suavizar
     df_diario = get_crypto_data(simbolo, "histoday", 400)
     if df_diario.empty or df_rsi.empty or len(df_diario) < 200:
