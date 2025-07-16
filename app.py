@@ -106,52 +106,95 @@ def classificar_rsi(rsi):
     elif rsi > 70: return "Sobrecomprado"
     else: return "Neutro"
 
-def classificar_tendencia(ema8, ema21, ema56, ema200):
-    if ema8 > ema21 > ema56 > ema200:
+def classificar_tendencia(ema8, ema21, ema56, ema200, ema8_ant, ema21_ant, ema56_ant, ema200_ant, preco_atual):
+    def inclinacao_positiva(atual, anterior): return atual > anterior
+    def distancia_segura(e1, e2, pct=0.01): return abs(e1 - e2) / e2 >= pct
+
+    inclinadas_para_cima = all([
+        inclinacao_positiva(ema8, ema8_ant),
+        inclinacao_positiva(ema21, ema21_ant),
+        inclinacao_positiva(ema56, ema56_ant),
+        inclinacao_positiva(ema200, ema200_ant)
+    ])
+    inclinadas_para_baixo = all([
+        not inclinacao_positiva(ema8, ema8_ant),
+        not inclinacao_positiva(ema21, ema21_ant),
+        not inclinacao_positiva(ema56, ema56_ant),
+        not inclinacao_positiva(ema200, ema200_ant)
+    ])
+
+    if ema8 > ema21 > ema56 > ema200 and inclinadas_para_cima and all([
+        distancia_segura(ema8, ema21),
+        distancia_segura(ema21, ema56),
+        distancia_segura(ema56, ema200)
+    ]):
         return "Alta consolidada"
-    elif ema8 < ema21 < ema56 < ema200:
+
+    elif ema8 < ema21 < ema56 < ema200 and inclinadas_para_baixo and all([
+        distancia_segura(ema21, ema8),
+        distancia_segura(ema56, ema21),
+        distancia_segura(ema200, ema56)
+    ]):
         return "Baixa consolidada"
-    return "Neutra/Transição"
+
+    elif abs(preco_atual - ema200) / ema200 < 0.01 or abs(preco_atual - ema56) / ema56 < 0.01:
+        return "Zona de Suporte"
+
+    elif preco_atual < ema8 and (abs(preco_atual - ema8) / ema8 < 0.01 or abs(preco_atual - ema21) / ema21 < 0.01):
+        return "Zona de Resistência"
+
+    return "Transição / Neutra"
 
 def classificar_volume(v_atual, v_medio):
     return "Subindo" if v_atual >= v_medio else "Caindo"
 
 def obter_recomendacao(tendencia, rsi, volume):
     if tendencia == "Alta consolidada":
-        if rsi == "Sobrevendido" and volume == "Subindo":
-            return "Compra"
-        elif rsi == "Neutro" and volume == "Subindo":
-            return "Acumular / Espera"
-        elif rsi == "Sobrecomprado":
-            return "Aguardar correção"
+        if rsi == "Sobrevendido" and volume == "Subindo": return "Compra"
+        elif rsi == "Neutro" and volume == "Subindo": return "Acumular / Espera"
+        elif rsi == "Sobrecomprado": return "Aguardar correção"
+        else: return "Manter posição e monitorar"
     elif tendencia == "Baixa consolidada":
-        if rsi == "Sobrevendido" and volume == "Subindo":
-            return "Observar reversão potencial com stop curto"
-        elif volume == "Caindo":
-            return "Venda / Evitar"
-        elif rsi == "Neutro" and volume == "Subindo":
-            return "Observar cautelosamente"
-    elif tendencia == "Neutra/Transição":
-        if rsi == "Sobrevendido":
-            return "Observar"
-        elif rsi == "Neutro":
-            return "Espera"
-        elif rsi == "Sobrecomprado":
-            return "Venda parcial para quem já está comprado; observar topo para quem não está dentro"
+        if rsi == "Sobrevendido" and volume == "Subindo": return "Observar reversão potencial com stop curto"
+        elif volume == "Caindo": return "Venda / Evitar"
+        elif rsi == "Neutro" and volume == "Subindo": return "Observar com cautela"
+        else: return "Fora do ativo"
+    elif tendencia == "Zona de Suporte":
+        if rsi == "Sobrevendido" and volume == "Subindo": return "Entrada tática com stop abaixo do suporte"
+        elif rsi == "Neutro": return "Observar reação no suporte"
+        else: return "Aguardar confirmação de suporte"
+    elif tendencia == "Zona de Resistência":
+        if rsi == "Sobrecomprado" and volume == "Caindo": return "Possível topo - avaliar venda parcial"
+        elif rsi == "Neutro" and volume == "Caindo": return "Evitar entrada próximo à resistência"
+        elif volume == "Subindo": return "Observar possível rompimento com cautela"
+        else: return "Zona arriscada - aguardar definição"
+    elif tendencia == "Transição / Neutra":
+        if rsi == "Sobrevendido": return "Observar para possível entrada em reversão"
+        elif rsi == "Neutro": return "Esperar definição de tendência"
+        elif rsi == "Sobrecomprado": return "Venda parcial / Observar possível topo"
+        else: return "Sem ação definida - aguardar"
     return "Aguardar"
 
 def style_recomendacao_card(text):
     estilos = {
         "Compra": ("Compra Forte", "rec-compra"),
         "Acumular / Espera": ("Atenção", "rec-acumular"),
-        "Aguardar correção": ("Aguardar", "rec-agardar"),
+        "Aguardar correção": ("Aguardar", "rec-aguardar"),
         "Venda / Evitar": ("Venda Forte", "rec-venda"),
-        "Observar": ("Observar", "rec-observar"),
-        "Espera": ("Espera", "rec-espera"),
-        "Venda parcial para quem já está comprado; observar topo para quem não está dentro": ("Venda Parcial", "rec-vendaparcial"),
-        "Observar reversão potencial com stop curto": ("Observar Reversão", "rec-observar"),
-        "Observar cautelosamente": ("Observar Cautelosamente", "rec-observar"),
-        "Aguardar": ("Aguardar", "rec-default"),
+        "Observar reversão potencial com stop curto": ("Observar", "rec-observar"),
+        "Observar com cautela": ("Observar", "rec-observar"),
+        "Entrada tática com stop abaixo do suporte": ("Entrada Estratégica", "rec-compra"),
+        "Observar reação no suporte": ("Observar Suporte", "rec-observar"),
+        "Aguardar confirmação de suporte": ("Aguardar", "rec-aguardar"),
+        "Possível topo - avaliar venda parcial": ("Venda Parcial", "rec-vendaparcial"),
+        "Evitar entrada próximo à resistência": ("Evitar Entrada", "rec-venda"),
+        "Observar possível rompimento com cautela": ("Observar", "rec-observar"),
+        "Observar para possível entrada em reversão": ("Observar Reversão", "rec-observar"),
+        "Esperar definição de tendência": ("Espera", "rec-espera"),
+        "Venda parcial / Observar possível topo": ("Venda Parcial", "rec-vendaparcial"),
+        "Fora do ativo": ("Fora do Ativo", "rec-venda"),
+        "Manter posição e monitorar": ("Manter Posição", "rec-espera"),
+        "Sem ação definida - aguardar": ("Aguardar", "rec-default")
     }
     return estilos.get(text, ("Desconhecido", "rec-default"))
 
