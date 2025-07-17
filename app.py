@@ -7,9 +7,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import time
-import matplotlib.pyplot as plt
-import base64
-from io import BytesIO
 
 # Configuração da página
 st.set_page_config(
@@ -67,7 +64,7 @@ h3 {
 }
 h4 {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: var(--primary-color);
+    color: var(--text-dark);
     font-weight: 600;
     font-size: 1.1em;
     margin-top: 1em;
@@ -116,36 +113,36 @@ h4 {
 /* Card de Recomendação */
 .recommendation-card {
     border-radius: 16px;
-    padding: 15px 20px;
+    padding: 15px 20px; /* Reduzido o padding */
     font-weight: 700;
-    font-size: 24px;
+    font-size: 24px; /* Reduzido o font-size */
     max-width: 550px;
-    margin: 20px auto;
+    margin: 20px auto; /* Reduzido a margem */
     box-shadow: 0 8px 25px rgba(0,0,0,0.15);
     text-align: center;
     color: var(--text-light);
-    background-image: linear-gradient(45deg, var(--primary-color), #6d28d9);
+    background-image: linear-gradient(45deg, var(--primary-color), #6d28d9); /* Gradient */
     border: none;
 }
 .recommendation-card .main-text {
-    font-size: 1em;
+    font-size: 1em; /* Ajustado para ser relativo ao font-size do card */
     margin-bottom: 0.5em;
 }
 .recommendation-card .sub-text {
-    font-size: 0.7em;
+    font-size: 0.7em; /* Ajustado para ser menor que o main-text */
     font-weight: 400;
     opacity: 0.9;
     line-height: 1.3;
 }
 .rec-compra { background-color: var(--success-color); }
 .rec-acumular { background-color: var(--warning-color); color: var(--text-dark); }
-.rec-agardar { background-color: #fd7e14; }
+.rec-agardar { background-color: #fd7e14; } /* Orange */
 .rec-venda { background-color: var(--danger-color); }
-.rec-observar { background-color: #007bff; }
-.rec-espera { background-color: #6c757d; }
-.rec-vendaparcial { background-color: #6f42c1; }
+.rec-observar { background-color: #007bff; } /* Blue */
+.rec-espera { background-color: #6c757d; } /* Gray */
+.rec-vendaparcial { background-color: #6f42c1; } /* Purple */
 
-/* Detalhes da Análise */
+/* Detalhes da Análise (Corrigida e Profissional) */
 .analysis-details-section {
     background: var(--bg-card);
     padding: 20px 25px;
@@ -167,60 +164,11 @@ h4 {
 .analysis-details-item p {
     margin: 0.2em 0;
     font-size: 0.95em;
-    color: #475569;
+    color: #475569; /* Slate 700 */
 }
 .analysis-details-item strong {
     color: var(--text-dark);
 }
-
-/* Estilos para ícones e cores condicionais */
-.positive-change { color: var(--success-color); font-weight: 600; }
-.negative-change { color: var(--danger-color); font-weight: 600; }
-.neutral-change { color: #64748b; }
-
-.trend-up { color: var(--success-color); }
-.trend-down { color: var(--danger-color); }
-.trend-neutral { color: #64748b; }
-
-.volume-up { color: var(--success-color); }
-.volume-down { color: var(--danger-color); }
-.volume-normal { color: #64748b; }
-
-.rsi-overbought { color: var(--danger-color); }
-.rsi-oversold { color: var(--success-color); }
-.rsi-neutral { color: #64748b; }
-
-.status-check { color: var(--success-color); }
-.status-x { color: var(--danger-color); }
-.status-info { color: #007bff; }
-
-/* Estilo para sparklines */
-.sparkline-img {
-    height: 25px;
-    vertical-align: middle;
-    margin-left: 5px;
-}
-
-/* Estilo para barras de progresso */
-.progress-bar-container {
-    width: 100%;
-    background-color: #e0e0e0;
-    border-radius: 5px;
-    overflow: hidden;
-    margin-top: 5px;
-}
-.progress-bar {
-    height: 10px;
-    background-color: var(--primary-color);
-    border-radius: 5px;
-    text-align: center;
-    color: white;
-    font-size: 8px;
-    line-height: 10px;
-}
-.progress-bar.rsi-oversold { background-color: var(--success-color); }
-.progress-bar.rsi-overbought { background-color: var(--danger-color); }
-.progress-bar.rsi-neutral { background-color: var(--warning-color); }
 
 /* Botões */
 .stButton>button {
@@ -235,7 +183,7 @@ h4 {
     border: none !important;
 }
 .stButton>button.primary:hover {
-    background-color: #6d28d9 !important;
+    background-color: #6d28d9 !important; /* Darker Indigo */
     transform: translateY(-1px);
 }
 
@@ -287,7 +235,7 @@ h4 {
         grid-template-columns: 1fr;
     }
     .recommendation-card {
-        font-size: 20px;
+        font-size: 20px; /* Ainda menor em mobile */
         padding: 15px;
     }
     .recommendation-card .main-text {
@@ -309,6 +257,7 @@ def get_top_100_cryptos():
         res = requests.get(url)
         res.raise_for_status()
         data = res.json()["Data"]
+        # Ordena a lista de criptomoedas alfabeticamente
         return sorted([f"{c['CoinInfo']['FullName']} ({c['CoinInfo']['Name']})" for c in data])
     except Exception as e:
         st.error(f"Erro ao buscar lista de criptomoedas: {e}")
@@ -343,26 +292,12 @@ def get_crypto_data(symbol, endpoint="histoday", limit=200):
         df = df.set_index("time")
         for col in ['open', 'high', 'low', 'close', 'volumefrom', 'volumeto']:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-        df = df.rename(columns={'volumeto': 'volume'}).dropna()
+                df[col] = pd.to_numeric(df[col], errors='coerce') # Converte para numérico, erros como NaN
+        df = df.rename(columns={'volumeto': 'volume'}).dropna() # Remove linhas com NaN após conversão
         return df
     except Exception as e:
         st.error(f"Erro ao buscar dados de {symbol}: {e}")
         return pd.DataFrame()
-
-@st.cache_data(ttl=3600)
-def get_market_cap_data(symbols):
-    """Busca dados de market cap para os símbolos fornecidos."""
-    url = f"https://min-api.cryptocompare.com/data/pricemultifull?fsyms={','.join(symbols)}&tsyms=USD"
-    try:
-        res = requests.get(url)
-        res.raise_for_status()
-        data = res.json()["RAW"]
-        market_caps = {s: data[s]['USD']['MKTCAP'] for s in symbols if s in data and 'USD' in data[s]}
-        return market_caps
-    except Exception as e:
-        st.warning(f"Erro ao buscar dados de market cap: {e}")
-        return {}
 
 @st.cache_data(ttl=1800)
 def get_fear_greed_index():
@@ -380,6 +315,7 @@ def agrupar_4h_otimizado(df_horas):
     """Agrupa dados de 1h em 4h"""
     if df_horas.empty:
         return pd.DataFrame()
+    # Usar 'start_day' para alinhar o agrupamento com o início do dia UTC
     return df_horas.resample('4H', origin='start_day').agg({
         'open': 'first',
         'high': 'max',
@@ -396,6 +332,7 @@ def classificar_rsi(rsi):
 
 def classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long):
     """Classifica a tendência com base nas EMAs"""
+    # Verifica se todas as EMAs são válidas (não None)
     if any(ema is None for ema in [ema_fast, ema_medium, ema_slow, ema_long]):
         return "Dados insuficientes"
     
@@ -407,11 +344,11 @@ def classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long):
 
 def classificar_volume(v_atual, v_medio):
     """Compara volume atual com médio"""
-    if v_medio == 0:
+    if v_medio == 0: # Evita divisão por zero
         return "Indefinido"
-    if v_atual >= v_medio * 1.2:
+    if v_atual >= v_medio * 1.2: # 20% acima da média
         return "Subindo (Alto)"
-    elif v_atual <= v_medio * 0.8:
+    elif v_atual <= v_medio * 0.8: # 20% abaixo da média
         return "Caindo (Baixo)"
     else:
         return "Normal"
@@ -438,7 +375,8 @@ def obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal):
         elif "Caindo" in volume_class or macd_signal == "Venda":
             rec_principal = "Venda / Evitar"
             rec_detalhe = "Tendência de baixa confirmada, volume em queda ou sinal de venda MACD. Evite posições ou considere vender."
-            
+    
+    # Casos para "Aguardar" mais específicos
     if rec_principal == "Aguardar":
         if tendencia == "Neutra/Transição":
             rec_detalhe = "O ativo está em fase de consolidação ou transição de tendência. Aguarde uma definição clara."
@@ -459,29 +397,18 @@ def style_recomendacao_card(text, detail_text):
         "Observar reversão": ("Observar reversão", "rec-observar"),
         "Aguardar": ("Aguardar", "rec-espera"),
     }
-    main_text, class_name = styles.get(text, (text, "rec-espera"))
+    main_text, class_name = styles.get(text, (text, "rec-espera")) # Default para "Aguardar"
     return main_text, detail_text, class_name
 
-def generate_sparkline(data):
-    """Gera uma imagem base64 da sparkline"""
-    if len(data) < 2:
-        return ""
-    fig, ax = plt.subplots(1, 1, figsize=(2, 0.2))
-    ax.plot(data, color='blue', linewidth=0.8)
-    ax.set_axis_off()
-    buf = BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-    plt.close(fig)
-    return base64.b64encode(buf.getvalue()).decode('utf-8')
-
-# --- Seção de Filtragem ---
+# --- Seção de Filtragem (Ajustada) ---
 def mostrar_filtros():
     """Exibe os controles de filtragem"""
-    with st.expander("🔍 FILTRAR MOEDAS POR INDICADORES", expanded=False):
-        with st.container(border=True):
+    with st.expander("🔍 FILTRAR MOEDAS POR INDICADORES", expanded=False): # Começa fechado
+        # Usando st.container para agrupar os elementos do filtro
+        with st.container(border=True): # Adicionado border=True para visualização
             st.markdown('<div class="filter-grid">', unsafe_allow_html=True)
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3 = st.columns(3) # Aumentado para 3 colunas
             
             with col1:
                 timeframe_filter = st.selectbox("Timeframe", ["1h", "4h", "1d", "1w"], index=2, key="filter_timeframe_main")
@@ -491,14 +418,14 @@ def mostrar_filtros():
                 rsi_filter = st.multiselect("RSI", ["Sobrevendido", "Neutro", "Sobrecomprado"], key="filter_rsi_main")
                 volume_filter = st.multiselect("Volume", ["Subindo (Alto)", "Normal", "Caindo (Baixo)"], key="filter_volume_main")
             
-            with col3:
+            with col3: # Nova coluna para o filtro de recomendação
                 recommendation_filter = st.multiselect(
                     "Recomendação", 
                     ["Compra Forte", "Compra", "Aguardar correção", "Venda / Evitar", "Observar reversão", "Aguardar"], 
                     key="filter_recommendation_main"
                 )
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True) # Fecha a div filter-grid
         
         if st.button("🔎 APLICAR FILTROS", type="primary", use_container_width=True, key="apply_filters_button"):
             return {
@@ -506,7 +433,7 @@ def mostrar_filtros():
                 'trend': trend_filter,
                 'rsi': rsi_filter,
                 'volume': volume_filter,
-                'recommendation': recommendation_filter,
+                'recommendation': recommendation_filter, # Adicionado ao dicionário de filtros
             }
     return None
 
@@ -522,13 +449,13 @@ def filtrar_moedas(filters):
             endpoint, limit = get_timeframe_endpoint(filters['timeframe'])
             df = get_crypto_data(simbolo, endpoint, limit)
             
-            if df.empty or len(df) < 50:
+            if df.empty or len(df) < 50:  # Mínimo de dados para indicadores
                 progress_bar.progress((i + 1) / len(get_top_100_cryptos()))
                 continue
                 
             if filters['timeframe'] == "4h":
                 df = agrupar_4h_otimizado(df)
-                if df.empty or len(df) < 50:
+                if df.empty or len(df) < 50: # Verifica novamente após agrupamento
                     progress_bar.progress((i + 1) / len(get_top_100_cryptos()))
                     continue
                 
@@ -554,13 +481,8 @@ def filtrar_moedas(filters):
             tendencia = classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long)
             volume_class = classificar_volume(volume_atual, volume_medio)
 
-            # Gerar recomendação e sparkline
+            # Gerar recomendação para a moeda atual
             rec_principal, _ = obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal)
-            sparkline_html = ""
-            if filters['timeframe'] == "1d" and len(df) >= 7:
-                sparkline_data = df['close'].tail(7).tolist()
-                sparkline_base64 = generate_sparkline(sparkline_data)
-                sparkline_html = f'<img src="data:image/png;base64,{sparkline_base64}" class="sparkline-img">'
             
             # Aplicar filtros
             conditions_met = True
@@ -570,7 +492,7 @@ def filtrar_moedas(filters):
                 conditions_met = False
             if filters['volume'] and volume_class not in filters['volume']:
                 conditions_met = False
-            if filters['recommendation'] and rec_principal not in filters['recommendation']:
+            if filters['recommendation'] and rec_principal not in filters['recommendation']: # Novo filtro de recomendação
                 conditions_met = False
             
             if conditions_met:
@@ -580,12 +502,10 @@ def filtrar_moedas(filters):
                     'Preço': preco,
                     'Variação': variacao,
                     'RSI': rsi,
-                    'RSI_Class': rsi_class,
                     'Tendência': tendencia,
                     'Volume': volume_class,
-                    'Recomendação': rec_principal,
-                    'Sparkline': sparkline_html,
-                    'Data': df
+                    'Recomendação': rec_principal, # Adicionado ao resultado
+                    'Data': df # Mantém o DataFrame para análise posterior se necessário
                 })
             
             progress_bar.progress((i + 1) / len(get_top_100_cryptos()))
@@ -602,83 +522,6 @@ def main():
     </p>
     """, unsafe_allow_html=True)
     
-    # Seção de dados do mercado no topo da página
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Índice de Medo e Ganância
-        st.subheader("🌡️ Índice de Medo e Ganância do Mercado")
-        fng = get_fear_greed_index()
-        if fng is not None:
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=fng,
-                domain={'x': [0, 1], 'y': [0, 1]},
-                title={'text': "Medo e Ganância (hoje)"},
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "darkblue"},
-                    'steps': [
-                        {'range': [0, 25], 'color': "#ef4444"},
-                        {'range': [25, 50], 'color': "#f59e0b"},
-                        {'range': [50, 75], 'color': "#84cc16"},
-                        {'range': [75, 100], 'color': "#10b981"}],
-                    'threshold': {
-                        'line': {'color': "black", 'width': 4},
-                        'thickness': 0.75,
-                        'value': fng}}))
-            
-            st.plotly_chart(fig, use_container_width=True)
-            st.markdown("""
-            <div style='text-align: center; color: #64748b; font-size: 0.9em;'>
-                0-25: Medo Extremo | 25-50: Medo | 50-75: Ganância | 75-100: Ganância Extrema
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.warning("Não foi possível obter o índice no momento")
-
-    with col2:
-        # Dominância de Mercado
-        st.subheader("🌍 Dominância de Mercado")
-        market_caps = get_market_cap_data(["BTC", "ETH"])
-        if market_caps:
-            total_market_cap = sum(market_caps.values())
-            if total_market_cap > 0:
-                btc_dominance = (market_caps.get("BTC", 0) / total_market_cap) * 100
-                eth_dominance = (market_caps.get("ETH", 0) / total_market_cap) * 100
-                other_dominance = 100 - btc_dominance - eth_dominance
-                
-                dominance_df = pd.DataFrame({
-                    'Cripto': ['Bitcoin', 'Ethereum', 'Outras'],
-                    'Dominância (%)': [btc_dominance, eth_dominance, other_dominance]
-                })
-                
-                fig_dominance = go.Figure(data=[go.Pie(
-                    labels=dominance_df['Cripto'], 
-                    values=dominance_df['Dominância (%)'],
-                    hole=.3,
-                    textinfo='label+percent',
-                    marker=dict(colors=['#FF9500', '#627EEA', '#888'])
-                )])
-                fig_dominance.update_layout(
-                    height=300,
-                    margin=dict(l=20, r=20, t=30, b=20),
-                    showlegend=False
-                )
-                st.plotly_chart(fig_dominance, use_container_width=True)
-                
-                st.markdown(f"""
-                <div style='text-align: center; color: #64748b; font-size: 0.9em;'>
-                    BTC: {btc_dominance:.1f}% | ETH: {eth_dominance:.1f}% | Outras: {other_dominance:.1f}%
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.info("Dados de Market Cap indisponíveis para cálculo de dominância.")
-        else:
-            st.info("Não foi possível obter dados de Market Cap para dominância.")
-
-    st.divider()
-
     # Seção de Filtragem
     filtros = mostrar_filtros()
     
@@ -690,16 +533,17 @@ def main():
             # Exibir resultados em uma tabela
             df_resultados = pd.DataFrame([{
                 'Moeda': r['Moeda'],
+                # Ajuste na formatação do preço
                 'Preço': f"${r['Preço']:.8f}" if r['Preço'] < 1 else f"${r['Preço']:,.2f}",
-                'Variação': f'<span class="{"positive-change" if r["Variação"] >= 0 else "negative-change"}">{r["Variação"]:+.2f}%</span> {r["Sparkline"]}',
-                'RSI': f'<span class="rsi-{r["RSI_Class"].lower()}">{r["RSI"]:.1f} ({r["RSI_Class"]})</span>',
-                'Tendência': f'<span class="trend-{r["Tendência"].split("/")[0].lower().replace(" ", "")}">{r["Tendência"]} {"⬆️" if "Alta" in r["Tendência"] else ("⬇️" if "Baixa" in r["Tendência"] else "↔️")}</span>',
-                'Volume': f'<span class="volume-{r["Volume"].split(" ")[0].lower()}">{r["Volume"]} {"⬆️" if "Subindo" in r["Volume"] else ("⬇️" if "Caindo" in r["Volume"] else "↔️")}</span>',
-                'Recomendação': r['Recomendação']
+                'Variação': f"{r['Variação']:+.2f}%",
+                'RSI': f"{r['RSI']:.1f}",
+                'Tendência': r['Tendência'],
+                'Volume': r['Volume'],
+                'Recomendação': r['Recomendação'] # Exibir a recomendação na tabela
             } for r in resultados_filtro])
             
-            st.markdown(df_resultados.to_html(escape=False), unsafe_allow_html=True)
-            st.divider()
+            st.dataframe(df_resultados, height=300, use_container_width=True)
+            st.divider() # Adiciona um divisor após os resultados da filtragem
         else:
             st.warning("Nenhuma moeda atende aos critérios selecionados")
             st.divider()
@@ -707,7 +551,8 @@ def main():
     # Seção de Análise Individual
     st.subheader("📈 Análise Individual")
     
-    with st.container(border=True):
+    # Seção de seleção de moeda e timeframe para análise individual
+    with st.container(border=True): # Usando st.container com border=True para a seção de seleção
         col1, col2 = st.columns([2, 1])
         
         with col1:
@@ -724,8 +569,7 @@ def main():
                 "Timeframe Análise",
                 ["1h", "4h", "1d", "1w"],
                 index=2,
-                key="main_timeframe",
-                help="Selecione o período de tempo para o gráfico e indicadores."
+                key="main_timeframe"
             )
     
     with st.spinner(f"Carregando dados de {moeda_selecionada}..."):
@@ -738,7 +582,7 @@ def main():
             
         if timeframe_analise == "4h":
             df_analise = agrupar_4h_otimizado(df_analise_raw)
-            if df_analise.empty:
+            if df_analise.empty: # Verifica se o agrupamento resultou em DF vazio
                 st.error("Dados insuficientes após agrupamento para 4h.")
                 st.stop()
         else:
@@ -758,42 +602,42 @@ def main():
         macd_diff = macd.macd_diff().iloc[-1]
         macd_signal = "Compra" if macd_line > macd_signal_line else "Venda"
         
-        # Cálculo EMAs
+        # Cálculo EMAs (com verificação de dados suficientes)
         ema_periods = [8, 21, 50, 200]
         emas = {}
         for period in ema_periods:
             if len(df_analise) >= period:
                 emas[f"ema_{period}"] = ta_trend.EMAIndicator(df_analise["close"], period).ema_indicator().iloc[-1]
             else:
-                emas[f"ema_{period}"] = None
+                emas[f"ema_{period}"] = None # Define como None se não houver dados suficientes
         
         tendencia = classificar_tendencia(emas.get("ema_8"), emas.get("ema_21"), emas.get("ema_50"), emas.get("ema_200"))
         volume_class = classificar_volume(volume_atual, volume_medio)
         
-        # Obter recomendação
+        # Obter recomendação e detalhe
         rec_principal, rec_detalhe = obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal)
         texto_card, texto_detalhe_card, classe_card = style_recomendacao_card(rec_principal, rec_detalhe)
 
     # Exibição dos resultados principais
     col1, col2, col3 = st.columns(3)
+    # Ajuste na formatação do preço atual
     col1.metric("💵 Preço Atual", f"${preco_atual:.8f}" if preco_atual < 1 else f"${preco_atual:,.2f}", f"{variacao:+.2f}%")
     col2.metric("📊 Volume 24h", f"${volume_atual:,.0f}", 
                f"{'↑' if 'Subindo' in volume_class else '↓'} {abs((volume_atual/volume_medio-1)*100):.1f}% vs média" 
                if volume_medio > 0 else "")
     col3.metric("📉 RSI (14)", f"{rsi:.1f}", rsi_class)
 
-    # Análise detalhada
+    # Análise detalhada (Corrigida e Profissional)
     with st.expander("🔍 Detalhes da Análise", expanded=True):
+        # Usando st.container para envolver os detalhes da análise
         with st.container(border=True):
+            # Cada item de detalhe é um bloco de markdown separado para garantir renderização correta
             st.markdown(f"""
             <div class="analysis-details-item">
-                <h4>Tendência {"⬆️" if "Alta" in tendencia else ("⬇️" if "Baixa" in tendencia else "↔️")}</h4>
+                <h4>Tendência</h4>
                 <p><strong>{tendencia}</strong></p>
                 <p>EMA (8): <strong>${emas.get('ema_8', 0.0):,.2f}</strong> | EMA (21): <strong>${emas.get('ema_21', 0.0):,.2f}</strong></p>
                 <p>EMA (50): <strong>${emas.get('ema_50', 0.0):,.2f}</strong> | EMA (200): <strong>${emas.get('ema_200', 0.0):,.2f}</strong></p>
-                <p>Status: <span class="status-{"check" if tendencia == "Alta consolidada" else ("x" if tendencia == "Baixa consolidada" else "info")}">
-                {"✅ Forte Alta" if tendencia == "Alta consolidada" else ("❌ Forte Baixa" if tendencia == "Baixa consolidada" else "ℹ️ Neutra/Transição")}
-                </span></p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -801,34 +645,21 @@ def main():
             <div class="analysis-details-item">
                 <h4>Momentum</h4>
                 <p>RSI: <strong>{rsi:.1f}</strong> ({rsi_class})</p>
-                <div class="progress-bar-container">
-                    <div class="progress-bar rsi-{rsi_class.lower()}" style="width: {rsi}%;"></div>
-                </div>
                 <p>MACD: <strong>{macd_line:,.2f}</strong> | Sinal: <strong>{macd_signal_line:,.2f}</strong></p>
                 <p>Histograma: <strong>{macd_diff:,.2f}</strong> | Sinal: <strong>{macd_signal}</strong></p>
-                <p>Status: <span class="status-{"check" if macd_signal == "Compra" else ("x" if macd_signal == "Venda" else "info")}">
-                {"✅ Sinal de Compra" if macd_signal == "Compra" else ("❌ Sinal de Venda" if macd_signal == "Venda" else "ℹ️ Sinal Neutro")}
-                </span></p>
             </div>
             """, unsafe_allow_html=True)
             
-            volume_progress = min(100, max(0, (volume_atual / volume_medio) * 100)) if volume_medio > 0 else 0
             st.markdown(f"""
             <div class="analysis-details-item">
-                <h4>Volume {"⬆️" if "Subindo" in volume_class else ("⬇️" if "Caindo" in volume_class else "↔️")}</h4>
+                <h4>Volume</h4>
                 <p>Atual: <strong>${volume_atual:,.0f}</strong></p>
                 <p>Média: <strong>${volume_medio:,.0f}</strong></p>
                 <p>Tendência: <strong>{volume_class}</strong></p>
-                <div class="progress-bar-container">
-                    <div class="progress-bar volume-{volume_class.split(" ")[0].lower()}" style="width: {volume_progress}%;"></div>
-                </div>
-                <p>Status: <span class="status-{"check" if "Subindo" in volume_class else ("x" if "Caindo" in volume_class else "info")}">
-                {"✅ Volume Alto" if "Subindo" in volume_class else ("❌ Volume Baixo" if "Caindo" in volume_class else "ℹ️ Volume Normal")}
-                </span></p>
             </div>
             """, unsafe_allow_html=True)
 
-    # Card de recomendação
+    # Card de recomendação (MOVIDO PARA CÁ)
     st.markdown(f"""
     <div class="recommendation-card {classe_card}">
         <div class="main-text">{texto_card}</div>
@@ -918,6 +749,39 @@ def main():
             template="plotly_white"
         )
         st.plotly_chart(fig, use_container_width=True)
+
+    # Índice de Medo e Ganância
+    st.divider()
+    st.subheader("🌡️ Índice de Medo e Ganância do Mercado")
+    
+    fng = get_fear_greed_index()
+    if fng is not None:
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=fng,
+            domain={'x': [0, 1], 'y': [0, 1]},
+            title={'text': "Medo e Ganância (hoje)"},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "darkblue"},
+                'steps': [
+                    {'range': [0, 25], 'color': "#ef4444"},  # Medo extremo
+                    {'range': [25, 50], 'color': "#f59e0b"}, # Medo
+                    {'range': [50, 75], 'color': "#84cc16"}, # Ganância
+                    {'range': [75, 100], 'color': "#10b981"}], # Ganância extrema
+                'threshold': {
+                    'line': {'color': "black", 'width': 4},
+                    'thickness': 0.75,
+                    'value': fng}}))
+        
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("""
+        <div style="text-align: center; color: #64748b;">
+            <small>0-25: Medo Extremo | 25-50: Medo | 50-75: Ganância | 75-100: Ganância Extrema</small>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.warning("Não foi possível obter o índice no momento")
 
     # Rodapé
     st.markdown("""
