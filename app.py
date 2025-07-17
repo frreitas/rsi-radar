@@ -408,7 +408,7 @@ def mostrar_filtros():
         with st.container(border=True): # Adicionado border=True para visualização
             st.markdown('<div class="filter-grid">', unsafe_allow_html=True)
             
-            col1, col2 = st.columns(2) # Reduzido para 2 colunas
+            col1, col2, col3 = st.columns(3) # Aumentado para 3 colunas
             
             with col1:
                 timeframe_filter = st.selectbox("Timeframe", ["1h", "4h", "1d", "1w"], index=2, key="filter_timeframe_main")
@@ -418,6 +418,13 @@ def mostrar_filtros():
                 rsi_filter = st.multiselect("RSI", ["Sobrevendido", "Neutro", "Sobrecomprado"], key="filter_rsi_main")
                 volume_filter = st.multiselect("Volume", ["Subindo (Alto)", "Normal", "Caindo (Baixo)"], key="filter_volume_main")
             
+            with col3: # Nova coluna para o filtro de recomendação
+                recommendation_filter = st.multiselect(
+                    "Recomendação", 
+                    ["Compra Forte", "Compra", "Aguardar correção", "Venda / Evitar", "Observar reversão", "Aguardar"], 
+                    key="filter_recommendation_main"
+                )
+            
             st.markdown('</div>', unsafe_allow_html=True) # Fecha a div filter-grid
         
         if st.button("🔎 APLICAR FILTROS", type="primary", use_container_width=True, key="apply_filters_button"):
@@ -426,6 +433,7 @@ def mostrar_filtros():
                 'trend': trend_filter,
                 'rsi': rsi_filter,
                 'volume': volume_filter,
+                'recommendation': recommendation_filter, # Adicionado ao dicionário de filtros
             }
     return None
 
@@ -460,7 +468,9 @@ def filtrar_moedas(filters):
             rsi_class = classificar_rsi(rsi)
             
             macd = ta_trend.MACD(df['close'])
-            macd_signal_val = "Compra" if macd.macd().iloc[-1] > macd.macd_signal().iloc[-1] else "Venda"
+            macd_line = macd.macd().iloc[-1]
+            macd_signal_line = macd.macd_signal().iloc[-1]
+            macd_signal = "Compra" if macd_line > macd_signal_line else "Venda"
             
             # EMAs para tendência
             ema_fast = ta_trend.EMAIndicator(df['close'], 8).ema_indicator().iloc[-1] if len(df) >= 8 else None
@@ -470,6 +480,9 @@ def filtrar_moedas(filters):
             
             tendencia = classificar_tendencia(ema_fast, ema_medium, ema_slow, ema_long)
             volume_class = classificar_volume(volume_atual, volume_medio)
+
+            # Gerar recomendação para a moeda atual
+            rec_principal, _ = obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal)
             
             # Aplicar filtros
             conditions_met = True
@@ -478,6 +491,8 @@ def filtrar_moedas(filters):
             if filters['rsi'] and rsi_class not in filters['rsi']:
                 conditions_met = False
             if filters['volume'] and volume_class not in filters['volume']:
+                conditions_met = False
+            if filters['recommendation'] and rec_principal not in filters['recommendation']: # Novo filtro de recomendação
                 conditions_met = False
             
             if conditions_met:
@@ -489,6 +504,7 @@ def filtrar_moedas(filters):
                     'RSI': rsi,
                     'Tendência': tendencia,
                     'Volume': volume_class,
+                    'Recomendação': rec_principal, # Adicionado ao resultado
                     'Data': df # Mantém o DataFrame para análise posterior se necessário
                 })
             
@@ -521,7 +537,8 @@ def main():
                 'Variação': f"{r['Variação']:+.2f}%",
                 'RSI': f"{r['RSI']:.1f}",
                 'Tendência': r['Tendência'],
-                'Volume': r['Volume']
+                'Volume': r['Volume'],
+                'Recomendação': r['Recomendação'] # Exibir a recomendação na tabela
             } for r in resultados_filtro])
             
             st.dataframe(df_resultados, height=300, use_container_width=True)
