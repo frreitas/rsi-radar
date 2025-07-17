@@ -533,7 +533,8 @@ def main():
             # Exibir resultados em uma tabela
             df_resultados = pd.DataFrame([{
                 'Moeda': r['Moeda'],
-                'Preço': f"${r['Preço']:,.2f}",
+                # Ajuste na formatação do preço
+                'Preço': f"${r['Preço']:.8f}" if r['Preço'] < 1 else f"${r['Preço']:,.2f}",
                 'Variação': f"{r['Variação']:+.2f}%",
                 'RSI': f"{r['RSI']:.1f}",
                 'Tendência': r['Tendência'],
@@ -619,7 +620,8 @@ def main():
 
     # Exibição dos resultados principais
     col1, col2, col3 = st.columns(3)
-    col1.metric("💵 Preço Atual", f"${preco_atual:,.2f}", f"{variacao:+.2f}%")
+    # Ajuste na formatação do preço atual
+    col1.metric("💵 Preço Atual", f"${preco_atual:.8f}" if preco_atual < 1 else f"${preco_atual:,.2f}", f"{variacao:+.2f}%")
     col2.metric("📊 Volume 24h", f"${volume_atual:,.0f}", 
                f"{'↑' if 'Subindo' in volume_class else '↓'} {abs((volume_atual/volume_medio-1)*100):.1f}% vs média" 
                if volume_medio > 0 else "")
