@@ -7,6 +7,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import time
+import matplotlib.pyplot as plt # NOVO: Para sparklines
+import base64 # NOVO: Para sparklines
+from io import BytesIO # NOVO: Para sparklines
 
 # Configuração da página
 st.set_page_config(
@@ -64,7 +67,7 @@ h3 {
 }
 h4 {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    color: var(--text-dark);
+    color: var(--primary-color); /* NOVO: Cor para h4 nos detalhes */
     font-weight: 600;
     font-size: 1.1em;
     margin-top: 1em;
@@ -169,6 +172,56 @@ h4 {
 .analysis-details-item strong {
     color: var(--text-dark);
 }
+
+/* NOVO: Estilos para ícones e cores condicionais na tabela */
+.positive-change { color: var(--success-color); font-weight: 600; }
+.negative-change { color: var(--danger-color); font-weight: 600; }
+.neutral-change { color: #64748b; } /* Slate 500 */
+
+.trend-up { color: var(--success-color); }
+.trend-down { color: var(--danger-color); }
+.trend-neutral { color: #64748b; }
+
+.volume-up { color: var(--success-color); }
+.volume-down { color: var(--danger-color); }
+.volume-normal { color: #64748b; }
+
+.rsi-overbought { color: var(--danger-color); }
+.rsi-oversold { color: var(--success-color); }
+.rsi-neutral { color: #64748b; }
+
+.status-check { color: var(--success-color); }
+.status-x { color: var(--danger-color); }
+.status-info { color: #007bff; } /* Blue */
+
+/* NOVO: Estilo para sparklines */
+.sparkline-img {
+    height: 25px; /* Altura fixa para a sparkline */
+    vertical-align: middle;
+    margin-left: 5px;
+}
+
+/* NOVO: Estilo para barras de progresso */
+.progress-bar-container {
+    width: 100%;
+    background-color: #e0e0e0;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-top: 5px;
+}
+.progress-bar {
+    height: 10px;
+    background-color: var(--primary-color);
+    border-radius: 5px;
+    text-align: center;
+    color: white;
+    font-size: 8px;
+    line-height: 10px;
+}
+.progress-bar.rsi-oversold { background-color: var(--success-color); }
+.progress-bar.rsi-overbought { background-color: var(--danger-color); }
+.progress-bar.rsi-neutral { background-color: var(--warning-color); }
+
 
 /* Botões */
 .stButton>button {
@@ -299,6 +352,21 @@ def get_crypto_data(symbol, endpoint="histoday", limit=200):
         st.error(f"Erro ao buscar dados de {symbol}: {e}")
         return pd.DataFrame()
 
+### NOVO: Função para obter dados de market cap para dominância
+@st.cache_data(ttl=3600)
+def get_market_cap_data(symbols):
+    """Busca dados de market cap para os símbolos fornecidos."""
+    url = f"https://min-api.cryptocompare.com/data/pricemultifull?fsyms={','.join(symbols)}&tsyms=USD"
+    try:
+        res = requests.get(url)
+        res.raise_for_status()
+        data = res.json()["RAW"]
+        market_caps = {s: data[s]['USD']['MKTCAP'] for s in symbols if s in data and 'USD' in data[s]}
+        return market_caps
+    except Exception as e:
+        st.warning(f"Erro ao buscar dados de market cap: {e}")
+        return {}
+
 @st.cache_data(ttl=1800)
 def get_fear_greed_index():
     """Obtém o índice de Medo e Ganância"""
@@ -400,6 +468,18 @@ def style_recomendacao_card(text, detail_text):
     main_text, class_name = styles.get(text, (text, "rec-espera")) # Default para "Aguardar"
     return main_text, detail_text, class_name
 
+### NOVO: Função para gerar sparkline
+def generate_sparkline(data):
+    if len(data) < 2:
+        return ""
+    fig, ax = plt.subplots(1, 1, figsize=(2, 0.2)) # Ajuste o tamanho conforme necessário
+    ax.plot(data, color='blue', linewidth=0.8)
+    ax.set_axis_off()
+    buf = BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+    plt.close(fig)
+    return base64.b64encode(buf.getvalue()).decode('utf-8')
+
 # --- Seção de Filtragem (Ajustada) ---
 def mostrar_filtros():
     """Exibe os controles de filtragem"""
@@ -411,23 +491,24 @@ def mostrar_filtros():
             col1, col2, col3 = st.columns(3) # Aumentado para 3 colunas
             
             with col1:
-                timeframe_filter = st.selectbox("Timeframe", ["1h", "4h", "1d", "1w"], index=2, key="filter_timeframe_main")
-                trend_filter = st.multiselect("Tendência", ["Alta consolidada", "Baixa consolidada", "Neutra/Transição"], key="filter_trend_main")
+                timeframe_filter = st.selectbox("Timeframe", ["1h", "4h", "1d", "1w"], index=2, key="filter_timeframe_main", help="Selecione o período de tempo para a análise.")
+                trend_filter = st.multiselect("Tendência", ["Alta consolidada", "Baixa consolidada", "Neutra/Transição"], key="filter_trend_main", help="Filtre por tendência de preço baseada nas EMAs.")
                 
             with col2:
-                rsi_filter = st.multiselect("RSI", ["Sobrevendido", "Neutro", "Sobrecomprado"], key="filter_rsi_main")
-                volume_filter = st.multiselect("Volume", ["Subindo (Alto)", "Normal", "Caindo (Baixo)"], key="filter_volume_main")
+                rsi_filter = st.multiselect("RSI", ["Sobrevendido", "Neutro", "Sobrecomprado"], key="filter_rsi_main", help="Filtre por estado do RSI (Relative Strength Index).")
+                volume_filter = st.multiselect("Volume", ["Subindo (Alto)", "Normal", "Caindo (Baixo)"], key="filter_volume_main", help="Filtre por comportamento do volume em relação à média.")
             
             with col3: # Nova coluna para o filtro de recomendação
                 recommendation_filter = st.multiselect(
                     "Recomendação", 
                     ["Compra Forte", "Compra", "Aguardar correção", "Venda / Evitar", "Observar reversão", "Aguardar"], 
-                    key="filter_recommendation_main"
+                    key="filter_recommendation_main",
+                    help="Filtre por recomendação de análise gerada."
                 )
             
             st.markdown('</div>', unsafe_allow_html=True) # Fecha a div filter-grid
         
-        if st.button("🔎 APLICAR FILTROS", type="primary", use_container_width=True, key="apply_filters_button"):
+        if st.button("🔎 APLICAR FILTROS", type="primary", use_container_width=True, key="apply_filters_button", help="Clique para aplicar os filtros selecionados e ver os resultados."):
             return {
                 'timeframe': timeframe_filter,
                 'trend': trend_filter,
@@ -483,6 +564,13 @@ def filtrar_moedas(filters):
 
             # Gerar recomendação para a moeda atual
             rec_principal, _ = obter_recomendacao(tendencia, rsi_class, volume_class, macd_signal)
+
+            ### NOVO: Gerar sparkline para os últimos 7 dias (se timeframe for diário)
+            sparkline_html = ""
+            if filters['timeframe'] == "1d" and len(df) >= 7:
+                sparkline_data = df['close'].tail(7).tolist()
+                sparkline_base64 = generate_sparkline(sparkline_data)
+                sparkline_html = f'<img src="data:image/png;base64,{sparkline_base64}" class="sparkline-img">'
             
             # Aplicar filtros
             conditions_met = True
@@ -502,9 +590,11 @@ def filtrar_moedas(filters):
                     'Preço': preco,
                     'Variação': variacao,
                     'RSI': rsi,
+                    'RSI_Class': rsi_class, # NOVO: Adicionar classe RSI
                     'Tendência': tendencia,
                     'Volume': volume_class,
                     'Recomendação': rec_principal, # Adicionado ao resultado
+                    'Sparkline': sparkline_html, # NOVO: Adicionar sparkline
                     'Data': df # Mantém o DataFrame para análise posterior se necessário
                 })
             
@@ -522,6 +612,35 @@ def main():
     </p>
     """, unsafe_allow_html=True)
     
+    ### NOVO: Market Cap Dominance
+    st.subheader("🌍 Dominância de Mercado")
+    market_caps = get_market_cap_data(["BTC", "ETH"])
+    if market_caps:
+        total_market_cap = sum(market_caps.values())
+        if total_market_cap > 0:
+            btc_dominance = market_caps.get("BTC", 0) / total_market_cap
+            eth_dominance = market_caps.get("ETH", 0) / total_market_cap
+            other_dominance = 1 - btc_dominance - eth_dominance
+            
+            dominance_df = pd.DataFrame({
+                'Cripto': ['Bitcoin', 'Ethereum', 'Outras'],
+                'Dominância': [btc_dominance, eth_dominance, other_dominance]
+            })
+            
+            fig_dominance = go.Figure(data=[go.Pie(labels=dominance_df['Cripto'], values=dominance_df['Dominância'], hole=.3)])
+            fig_dominance.update_layout(
+                title_text='Dominância de Market Cap (BTC, ETH vs Outras)',
+                height=300,
+                margin=dict(l=20, r=20, t=50, b=20),
+                showlegend=True
+            )
+            st.plotly_chart(fig_dominance, use_container_width=True)
+        else:
+            st.info("Dados de Market Cap indisponíveis para cálculo de dominância.")
+    else:
+        st.info("Não foi possível obter dados de Market Cap para dominância.")
+    st.divider()
+
     # Seção de Filtragem
     filtros = mostrar_filtros()
     
@@ -535,14 +654,19 @@ def main():
                 'Moeda': r['Moeda'],
                 # Ajuste na formatação do preço
                 'Preço': f"${r['Preço']:.8f}" if r['Preço'] < 1 else f"${r['Preço']:,.2f}",
-                'Variação': f"{r['Variação']:+.2f}%",
-                'RSI': f"{r['RSI']:.1f}",
-                'Tendência': r['Tendência'],
-                'Volume': r['Volume'],
+                # NOVO: Cores e Sparkline para Variação
+                'Variação': f'<span class="{"positive-change" if r["Variação"] >= 0 else "negative-change"}">{r["Variação"]:+.2f}%</span> {r["Sparkline"]}',
+                # NOVO: Ícones para RSI
+                'RSI': f'<span class="rsi-{r["RSI_Class"].lower()}">{r["RSI"]:.1f} ({r["RSI_Class"]})</span>',
+                # NOVO: Ícones para Tendência
+                'Tendência': f'<span class="trend-{r["Tendência"].split("/")[0].lower().replace(" ", "")}">{r["Tendência"]} {"⬆️" if "Alta" in r["Tendência"] else ("⬇️" if "Baixa" in r["Tendência"] else "↔️")}</span>',
+                # NOVO: Ícones para Volume
+                'Volume': f'<span class="volume-{r["Volume"].split(" ")[0].lower()}">{r["Volume"]} {"⬆️" if "Subindo" in r["Volume"] else ("⬇️" if "Caindo" in r["Volume"] else "↔️")}</span>',
                 'Recomendação': r['Recomendação'] # Exibir a recomendação na tabela
             } for r in resultados_filtro])
             
-            st.dataframe(df_resultados, height=300, use_container_width=True)
+            # NOVO: Usar unsafe_allow_html para renderizar HTML na tabela
+            st.markdown(df_resultados.to_html(escape=False), unsafe_allow_html=True)
             st.divider() # Adiciona um divisor após os resultados da filtragem
         else:
             st.warning("Nenhuma moeda atende aos critérios selecionados")
@@ -569,7 +693,8 @@ def main():
                 "Timeframe Análise",
                 ["1h", "4h", "1d", "1w"],
                 index=2,
-                key="main_timeframe"
+                key="main_timeframe",
+                help="Selecione o período de tempo para o gráfico e indicadores."
             )
     
     with st.spinner(f"Carregando dados de {moeda_selecionada}..."):
@@ -634,10 +759,13 @@ def main():
             # Cada item de detalhe é um bloco de markdown separado para garantir renderização correta
             st.markdown(f"""
             <div class="analysis-details-item">
-                <h4>Tendência</h4>
+                <h4>Tendência {"⬆️" if "Alta" in tendencia else ("⬇️" if "Baixa" in tendencia else "↔️")}</h4>
                 <p><strong>{tendencia}</strong></p>
                 <p>EMA (8): <strong>${emas.get('ema_8', 0.0):,.2f}</strong> | EMA (21): <strong>${emas.get('ema_21', 0.0):,.2f}</strong></p>
                 <p>EMA (50): <strong>${emas.get('ema_50', 0.0):,.2f}</strong> | EMA (200): <strong>${emas.get('ema_200', 0.0):,.2f}</strong></p>
+                <p>Status: <span class="status-{"check" if tendencia == "Alta consolidada" else ("x" if tendencia == "Baixa consolidada" else "info")}">
+                {"✅ Forte Alta" if tendencia == "Alta consolidada" else ("❌ Forte Baixa" if tendencia == "Baixa consolidada" else "ℹ️ Neutra/Transição")}
+                </span></p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -645,17 +773,31 @@ def main():
             <div class="analysis-details-item">
                 <h4>Momentum</h4>
                 <p>RSI: <strong>{rsi:.1f}</strong> ({rsi_class})</p>
+                <div class="progress-bar-container">
+                    <div class="progress-bar rsi-{rsi_class.lower()}" style="width: {rsi}%;"></div>
+                </div>
                 <p>MACD: <strong>{macd_line:,.2f}</strong> | Sinal: <strong>{macd_signal_line:,.2f}</strong></p>
                 <p>Histograma: <strong>{macd_diff:,.2f}</strong> | Sinal: <strong>{macd_signal}</strong></p>
+                <p>Status: <span class="status-{"check" if macd_signal == "Compra" else ("x" if macd_signal == "Venda" else "info")}">
+                {"✅ Sinal de Compra" if macd_signal == "Compra" else ("❌ Sinal de Venda" if macd_signal == "Venda" else "ℹ️ Sinal Neutro")}
+                </span></p>
             </div>
             """, unsafe_allow_html=True)
             
+            # NOVO: Barra de progresso para volume
+            volume_progress = min(100, max(0, (volume_atual / volume_medio) * 100)) if volume_medio > 0 else 0
             st.markdown(f"""
             <div class="analysis-details-item">
-                <h4>Volume</h4>
+                <h4>Volume {"⬆️" if "Subindo" in volume_class else ("⬇️" if "Caindo" in volume_class else "↔️")}</h4>
                 <p>Atual: <strong>${volume_atual:,.0f}</strong></p>
                 <p>Média: <strong>${volume_medio:,.0f}</strong></p>
                 <p>Tendência: <strong>{volume_class}</strong></p>
+                <div class="progress-bar-container">
+                    <div class="progress-bar volume-{volume_class.split(" ")[0].lower()}" style="width: {volume_progress}%;"></div>
+                </div>
+                <p>Status: <span class="status-{"check" if "Subindo" in volume_class else ("x" if "Caindo" in volume_class else "info")}">
+                {"✅ Volume Alto" if "Subindo" in volume_class else ("❌ Volume Baixo" if "Caindo" in volume_class else "ℹ️ Volume Normal")}
+                </span></p>
             </div>
             """, unsafe_allow_html=True)
 
